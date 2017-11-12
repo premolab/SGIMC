@@ -11,7 +11,7 @@ def make_imc_data(n_1, d_1, n_2, d_2, k, scale=0.05, noise=0,
                   random_state=None, binarize=False):
     """Create a very simple IMC problem.
 
-    TODO: should probabli utilize sklearn's make_regresssion.
+    TODO: should probably utilize sklearn's make_regresssion.
     """
     random_state = check_random_state(random_state)
 
@@ -56,7 +56,7 @@ def performance(X, W, Y, H, R, C, R_full, core_loss_class):
         W, H = np.atleast_3d(W, H)
 
     n_iterations = W.shape[-1]
-    assert W.shape[-1] == H.shape[-1], """Mismatching number of interations."""
+    assert W.shape[-1] == H.shape[-1], """Mismatching number of iterations."""
 
     # sparsitry coefficients
     sparsity_W = np.isclose(W, 0).mean(axis=(0, 1))
