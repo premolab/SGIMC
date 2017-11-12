@@ -91,3 +91,6 @@ ENV/
 # MAC
 .DS_Store
 
+# cython generated c-files
+sgimc/ops.c
+
