@@ -101,19 +101,19 @@ def performance(X, W, Y, H, R, C, R_full, core_loss_class):
             np.dot(np.dot(X, W[..., i]), np.dot(Y, H[..., i]).T),
             R_full) for i in range(n_iterations)])
 
-    loss_arr = np.stack([v_val_train, regularizer_value,
-                         score_full, v_val_full,
-                         sparsity_W, sparsity_H,
-                         div_W, div_H], axis=0)
+    metrics = np.stack([v_val_train, regularizer_value,
+                        score_full, v_val_full,
+                        sparsity_W, sparsity_H,
+                        div_W, div_H], axis=0)
 
-    exp_type = ['Observed Elements', 'Regularization', 'Score',
-                'Full Matrix', 'Zero Values of W', 'Zero Values of H',
-                'L2-Norm Variation W', 'L2-Norm Variation H']
+    titles = ['Observed Elements', 'Regularization', 'Score',
+              'Full Matrix', 'Zero Values of W', 'Zero Values of H',
+              'L2-Norm Variation W', 'L2-Norm Variation H']
 
-    norm_type = ['L2-Loss', 'L2-Loss', 'Score', 'L2-Loss',
-                 '%', '%', 'L2-Norm', 'L2-Norm']
+    units = ['L2-Loss', 'L2-Loss', 'Score', 'L2-Loss',
+             '%', '%', 'L2-Norm', 'L2-Norm']
 
-    return loss_arr, exp_type, norm_type
+    return metrics, titles, units
 
 
 def plot_WH(W, H):
@@ -137,31 +137,31 @@ def plot_WH(W, H):
     plt.close()
 
 
-def plot_loss(losses, titles, y_names, fig_size=4, max_cols=None):
+def plot_loss(metrics, titles, units, fig_size=4, max_cols=None, **kwargs):
+    n_plots = metrics.shape[0]
+    assert n_plots == len(titles) == len(units)
 
-    assert len(losses) == len(titles) == len(y_names)
-
-    if max_cols is None:
-        rows, columns = 1, len(losses)
+    if not isinstance(max_cols, int):
+        n_rows, n_cols = 1, n_plots
     else:
-        columns = min(len(losses), max_cols)
-        rows = (len(losses) - 1) // columns + 1
+        n_cols = min(max_cols, n_plots)
+        n_rows = (n_plots + n_cols - 1) // n_cols
 
-    n_iters = np.array([np.array(range(len(losses[i]))) + 1
-                        for i in range(len(losses))])
+    fig = plt.figure(figsize=(fig_size * n_cols, fig_size * n_rows))
 
-    fig, axes = plt.subplots(rows, columns,
-                             figsize=(fig_size * columns, fig_size * rows))
-    axes = np.array(axes).flatten()
+    # remove potentially troublesom arguments
+    kwargs.pop("ylabel", None)
+    kwargs.pop("title", None)
 
-    for ax, n_iter, loss, title, norm in zip(axes, n_iters,
-                                             losses, titles,
-                                             y_names):
-        ax.plot(n_iter, loss, 'r-', linewidth=2)
-        ax.set_ylabel(norm)
-        ax.set_xlabel('Number of iteration')
-        ax.set_title(title)
+    # plot
+    iterations = np.arange(metrics.shape[1])
+    for i, (metric, title, units) in enumerate(zip(metrics, titles, units)):
+        ax = fig.add_subplot(n_rows, n_cols, i + 1, ylabel=units,
+                             title=title, **kwargs)
 
-    plt.tight_layout()
+        ax.plot(iterations, metric, color="red",
+                linewidth=2, linestyle="solid")
+
+    fig.tight_layout()
     plt.show()
     plt.close()

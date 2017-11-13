@@ -105,7 +105,7 @@ def step(Obj, W0, C, eta, method="l-bfgs", sparse=True,
             np.linalg.norm(ZZ_old.reshape(-1), 2))
 
         tol_d = n_sq_dim * atol + rtol * \
-            np.linalg.norm(ZZ_old.reshape(-1), 2)  # boyd: LL.reshape(-1)
+            np.linalg.norm(LL.reshape(-1), 2)  # used to be ZZ_old
 
         # ADMM steps
         ZZ = sub_m(WW + LL, C_lasso, C_group, C_ridge, eta=eta)

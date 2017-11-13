@@ -72,6 +72,11 @@ cdef extern from "src/op_s/diag.c":
         const double *S, double *out) nogil
 
 
+def has_omp():
+    """Check if compiled with OMP support."""
+    return __has_omp() > 0
+
+
 def op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1, :] D,
          int n_threads=1):
     """Compute the `op_d` operation returning data for a sparse matrix.
@@ -118,7 +123,10 @@ def op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1, :] D,
 
     cdef int errcode = -1
 
-    if n_threads != 1 and __has_omp() == 1:
+    if not has_omp():
+        n_threads = 1
+
+    if n_threads != 1:
         errcode = __omp_op_d(&indptr[0], &indices[0],
                          n_1, d_1, &X[0, 0], n_2, k, &Z[0, 0],
                          &D[0, 0], &S[0], n_threads)
@@ -178,7 +186,11 @@ def op_s(object R, double[::1, :] X, double[::1, :] Z, double[::1] S,
     cdef double[::1, :] D = np.zeros((d_1, k), dtype="double", order="F")
 
     cdef int errcode = -1
-    if n_threads != 1 and __has_omp() == 1:
+
+    if not has_omp():
+        n_threads = 1
+
+    if n_threads != 1:
         errcode = __omp_op_s(&indptr[0], &indices[0],
                              n_1, d_1, &X[0, 0], n_2, k, &Z[0, 0],
                              &S[0], &D[0, 0], n_threads)

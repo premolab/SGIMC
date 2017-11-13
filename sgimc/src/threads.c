@@ -2,18 +2,20 @@
 #include "threads.h"
 
 
+#ifdef DISABLE_OPENMP
+
 int has_omp(void)
 {
-    #ifdef _OPENMP
     return 0;
-    #else
-    return 1;
-    #endif
-
 }
 
+#else
 
-#ifndef DISABLE_OPENMP
+int has_omp(void)
+{
+    return 1;
+}
+
 
 int get_max_threads(const int n_threads)
 {

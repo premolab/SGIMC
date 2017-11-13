@@ -44,10 +44,10 @@ endif
 export CFLAGS = $(CFLAGS_)
 
 # build the library
-all: install
+all: clean install
 
 build:
-	python setup.py build_ext --inplace
+	python setup.py build_ext --inplace --force
 
 install: build
 	python setup.py install
