@@ -26,7 +26,7 @@ the **experiments** folder.
 
 To install the module just run
 ```sh
-make install
+make
 ```
 This will compile and install the `sgimc` python package. All experiments with SGIMC
 must import it something like this:
