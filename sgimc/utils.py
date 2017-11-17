@@ -6,6 +6,8 @@ from scipy.sparse import coo_matrix
 
 from sklearn.utils import check_random_state
 
+from . import IMCProblem
+
 
 def make_imc_data(n_1, d_1, n_2, d_2, k, scale=0.05, noise=0,
                   random_state=None, binarize=False):
@@ -49,8 +51,12 @@ def sparsify(R, sparsity=0.10, random_state=None):
     return R_coo.tocsr(), mask
 
 
-def performance(X, W, Y, H, R, C, R_full, core_loss_class):
+def performance(problem, W, H, C, R_full):
     """Compute the performance of the IMC estimates."""
+
+    assert isinstance(problem, IMCProblem), \
+        """`problem` must be an IMC problem."""
+
     assert W.ndim == H.ndim, """Mismatching dimensionality."""
     if W.ndim < 3:
         W, H = np.atleast_3d(W, H)
@@ -85,21 +91,18 @@ def performance(X, W, Y, H, R, C, R_full, core_loss_class):
                                  "fro", axis=(0, 1)), 0]
 
     # Objective value on the train data
-    v_val_train = np.array([core_loss_class(X, W[..., i],
-                                            Y, H[..., i], R).value()
+    v_val_train = np.array([problem.value(W[..., i], H[..., i])
                             for i in range(n_iterations)])
 
     # Objective on the full matrix (expensive!)
     v_val_full = np.array([
-        core_loss_class.v_func(
-            np.dot(np.dot(X, W[..., i]), np.dot(Y, H[..., i]).T),
-            R_full).sum() for i in range(n_iterations)])
+        problem.loss(problem.prediction(W[..., i], H[..., i]),
+                     R_full).sum() for i in range(n_iterations)])
 
     # Score on the full matrix (expensive!)
     score_full = np.array([
-        core_loss_class.score(
-            np.dot(np.dot(X, W[..., i]), np.dot(Y, H[..., i]).T),
-            R_full) for i in range(n_iterations)])
+        problem.score(problem.prediction(W[..., i], H[..., i]),
+                      R_full) for i in range(n_iterations)])
 
     metrics = np.stack([v_val_train, regularizer_value,
                         score_full, v_val_full,

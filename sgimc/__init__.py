@@ -6,9 +6,59 @@ import numpy as np
 import tqdm
 
 
-def imc_descent(X, W, Y, H, R, C, step_fn, eta=1e-5,
-                n_iterations=500, rtol=1e-5, atol=1e-8,
-                verbose=False, return_history=False):
+class IMCProblem(object):
+    """A container for the IMC problem."""
+
+    def __init__(self, objective, X, Y, R, n_threads=4):
+        """A container for the IMC problem."""
+        self._X, self._Y, self._R = X, Y, R.tocsr()
+        self._objective = objective
+
+        self.n_threads = n_threads
+
+    def objective(self, W, H, approx_type="quadratic"):
+        """Get the approximation of the objective for the current problem."""
+        return self._objective(self._X, W, self._Y, H, self._R,
+                               approx_type=approx_type,
+                               n_threads=self.n_threads)
+
+    def value(self, W, H):
+        """Return the value of the current problem."""
+        return self.objective(W, H, approx_type="const").value()
+
+    def prediction(self, W, H):
+        """Return the prediction for the problem."""
+        return np.dot(np.dot(self._X, W), np.dot(self._Y, H).T)
+
+    def score(self, predict, target):
+        """Compute the score for this type of problem."""
+        return self._objective.score(predict, target)
+
+    def loss(self, predict, target):
+        """Compute the loss assicoated with this problem."""
+        return self._objective.v_func(predict, target)
+
+    @property
+    def T(self):
+        """Create an instance of the transposed problem."""
+        if not hasattr(self, "_transpose"):
+            # create an instance of the transposed problem
+            self._transpose = IMCProblem(self._objective,
+                                         self._Y, self._X, self._R.T,
+                                         self.n_threads)
+
+            # back reference to self
+            self._transpose._transpose = self
+
+        return self._transpose
+
+
+def imc_descent(problem, W, H, step_fn, step_kwargs={},
+                n_iterations=500, return_history=False,
+                rtol=1e-5, atol=1e-8, verbose=False):
+
+    assert isinstance(problem, IMCProblem), \
+        """`problem` must be an IMC problem."""
 
     iteration, history_W, history_H = 0, [W], [H]
     n_sq_dim_W, n_sq_dim_H = sqrt(np.prod(W.shape)), sqrt(np.prod(H.shape))
@@ -16,11 +66,9 @@ def imc_descent(X, W, Y, H, R, C, step_fn, eta=1e-5,
                    disable=not verbose) as pbar:
         while iteration < n_iterations:
             # Gauss-Siedel iteration
-            W_old, W = W, step_fn(X, W, Y, H, R, C, eta,
-                                  rtol=rtol, atol=atol)
+            W_old, W = W, step_fn(problem, W, H, **step_kwargs)
 
-            H_old, H = H, step_fn(Y, H, X, W, R.T, C, eta,
-                                  rtol=rtol, atol=atol)
+            H_old, H = H, step_fn(problem.T, H, W, **step_kwargs)
 
             pbar.update(1)
             iteration += 1

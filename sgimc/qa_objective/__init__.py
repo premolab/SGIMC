@@ -8,10 +8,13 @@ from .base import QuadraticApproximation
 class QAObjectiveL2Loss(QuadraticApproximation):
     """Quadratic Approximation for the L2 loss."""
 
-    def __init__(self, X, W, Y, H, R, hessian=True, n_threads=1):
+    def __init__(self, X, W, Y, H, R,
+                 n_threads=1, approx_type="quadratic"):
         """Build the Quadratic approximation."""
         super(QAObjectiveL2Loss, self).__init__(
-            X, W, Y, H, R, hessian=hessian, n_threads=n_threads)
+            X, W, Y, H, R,
+            n_threads=n_threads,
+            approx_type=approx_type)
 
     @staticmethod
     def v_func(predict, target):
@@ -37,10 +40,13 @@ class QAObjectiveL2Loss(QuadraticApproximation):
 class QAObjectiveHuberLoss(QAObjectiveL2Loss):
     """Quadratic Approximation for the Huber loss."""
 
-    def __init__(self, X, W, Y, H, R, hessian=True, epsilon=1e-2, n_threads=1):
+    def __init__(self, X, W, Y, H, R, epsilon=1e-2,
+                 n_threads=1, approx_type="quadratic"):
         """Build the Quadratic approximation."""
         super(QAObjectiveHuberLoss, self).__init__(
-            X, W, Y, H, R, hessian=hessian, n_threads=n_threads)
+            X, W, Y, H, R,
+            n_threads=n_threads,
+            approx_type=approx_type)
 
         self.epsilon = epsilon
 
@@ -78,10 +84,13 @@ def sigmoid(x):
 class QAObjectiveLogLoss(QuadraticApproximation):
     """Quadratic Approximation for the Logistic loss."""
 
-    def __init__(self, X, W, Y, H, R, hessian=True, n_threads=1):
+    def __init__(self, X, W, Y, H, R,
+                 n_threads=1, approx_type="quadratic"):
         """Build the Quadratic approximation."""
         super(QAObjectiveLogLoss, self).__init__(
-            X, W, Y, H, R, hessian=hessian, n_threads=n_threads)
+            X, W, Y, H, R,
+            n_threads=n_threads,
+            approx_type=approx_type)
 
     @staticmethod
     def v_func(logit, target):
