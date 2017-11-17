@@ -32,6 +32,9 @@ def save(obj, path, filename=None, gz=None):
     if not(gz is None or (isinstance(gz, int) and 0 <= gz <= 9)):
         raise TypeError("""`gz` parameter must be either `None` """
                         """or an integer 0-9.""")
+        
+    if not os.path.isdir(path):
+        os.makedirs(path)
 
     open_ = open if gz is None else lambda f, m: gzip.open(f, m, gz)
     if filename is None:
