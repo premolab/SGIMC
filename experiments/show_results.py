@@ -12,61 +12,89 @@ from sgimc import IMCProblem
 
 from sgimc.qa_objective import QAObjectiveL2Loss,\
                                QAObjectiveLogLoss
-    
 
-def update_exp(n_samples, n_objects, n_rank, n_features, K,
-               PROBLEM, STEP, mask_scale, scale,
-               noise, seed, C, eta, PATH):
-    
+
+def update_value(param_value, param_name, exp_setup, exp_struc, path):
+
+    PROBLEM, STEP, mask_scale, scale, noise, seed, C, eta = exp_setup
+    n_samples, n_objects, n_rank, n_features, K = exp_struc
+
     if PROBLEM == 'classification':
         QAObjectiveLoss = QAObjectiveLogLoss
     else:
         QAObjectiveLoss = QAObjectiveL2Loss
-        
-    X, W_ideal, Y, H_ideal, R_full \
-        = make_imc_data(
-            n_samples, n_features, n_objects, n_features,
-            n_rank, scale=scale, noise=noise,
-            binarize=(PROBLEM == "classification"),
-            random_state=seed)
+
+    if param_name == 'n_samples':
+        # iterating by n_samples
+        X, W_ideal, Y, H_ideal, R_full = make_imc_data(
+            param_value, n_features, n_objects, n_features, n_rank,
+            scale=scale, noise=noise, binarize=(PROBLEM == 'classification'), random_state=seed)
+    elif param_name == 'n_objects':
+        #iterating by n_objects
+        X, W_ideal, Y, H_ideal, R_full = make_imc_data(
+            n_samples, n_features, param_value, n_features, n_rank,
+            scale=scale, noise=noise, binarize=(PROBLEM == 'classification'), random_state=seed)
+    elif param_name == 'n_rank':
+        # iterating by n_rank
+        X, W_ideal, Y, H_ideal, R_full = make_imc_data(
+            n_samples, n_features, n_objects, n_features, param_value,
+            scale=scale, noise=noise, binarize=(PROBLEM == 'classification'), random_state=seed)
+    elif param_name == 'n_features':
+        # iterating by n_features
+        X, W_ideal, Y, H_ideal, R_full = make_imc_data(
+            n_samples, param_to_change, n_objects, param_value, n_rank,
+            scale=scale, noise=noise, binarize=(PROBLEM == 'classification'), random_state=seed)
+    elif param_name == 'K':
+        # iterating by K
+        X, W_ideal, Y, H_ideal, R_full = make_imc_data(
+            n_samples, n_features, n_objects, n_features, n_rank,
+            scale=scale, noise=noise, binarize=(PROBLEM == 'classification'), random_state=seed)
+        K = param_value
 
     R, mask = sparsify(R_full, mask_scale, random_state=seed)
-    
-    WH_name = 'WH_{}x{}-{}rk-{}ft-{}K'.format(
-              n_samples, n_objects, n_rank, n_features, K)
-    _filename = PATH + WH_name + '.gz'
-    W, H = load(_filename)
-    
+    WH_name = 'WH_{}'.format(param_value) + '_' + param_name
+    f_name = path + WH_name + '.gz'
+    W, H = load(f_name)
+
     problem = IMCProblem(QAObjectiveLoss, X, Y, R, n_threads=8)
-    
-    loss_arr, exp_type, norm_type \
-        = performance(problem, W, H, C, R_full)
-        
-    plot_loss(loss_arr, exp_type, norm_type,
-              fig_size=4, max_cols=4, yscale="log")
+    loss_arr, exp_type, norm_type = performance(problem, W, H, C, R_full)
+
+    plot_loss(loss_arr, exp_type, norm_type, fig_size=4, max_cols=4, yscale="log")
+
+
+
+def update_param(param_name, exp_setup, exp_struc, path):
+    b_name = path + param_name + '/' + 'is_iterable.pic'
+    b_iter = load(b_name)
+    if b_iter:
+        path_upd = path + param_name + '/'
+        f_name = path_upd + 'param.pic'
+        data = load(f_name)
+
+        interact(update_value,
+                 param_value = Dropdown(options=data, description='Parameter value:'),
+                 param_name = fixed(param_name),
+                 exp_setup = fixed(exp_setup),
+                 exp_struc = fixed(exp_struc),
+                 path = fixed(path_upd)
+            )
+    else:
+        print('No experiments to show!')
+
 
 
 def show_results(path):
         
-    f_name = path + 'params.pic'
+    setup_name = path + 'setup.pic'
+    struc_name = path + 'standard_structure.pic'
     
-    PROBLEM, STEP, samples, objects,\
-    ranks, features, Ks, mask_scale,\
-    scale, noise, seed, C, eta        = load(f_name)
-    
-    interact(update_exp,
-             n_samples    = Dropdown(options=samples, description='Number of samples:'),
-             n_objects    = Dropdown(options=objects, description='Number of objects:'),
-             n_rank       = Dropdown(options=ranks, description='Rank of matrix:'),
-             n_features   = Dropdown(options=features, description='Number of features:'),
-             K            = Dropdown(options=Ks, description='Assumed rank (K):'),
-             PROBLEM     = fixed(PROBLEM),
-             STEP        = fixed(STEP),
-             mask_scale  = fixed(mask_scale),
-             scale       = fixed(scale),
-             noise       = fixed(noise),
-             seed        = fixed(seed),
-             C           = fixed(C),
-             eta         = fixed(eta),
-             PATH = fixed(path)
-             )
+    exp_setup = load(setup_name)
+    exp_struc = load(struc_name)
+    iter_name = ['n_samples', 'n_objects', 'n_rank', 'n_features', 'K']
+
+    interact(update_param,
+             param_name = Dropdown(options=iter_name, description='Parameter name:'),
+             exp_setup = fixed(exp_setup),
+             exp_struc = fixed(exp_struc),
+             path = fixed(path)
+        )
