@@ -42,7 +42,7 @@ def update_value(param_value, param_name, exp_setup, exp_struc, path):
     elif param_name == 'n_features':
         # iterating by n_features
         X, W_ideal, Y, H_ideal, R_full = make_imc_data(
-            n_samples, param_to_change, n_objects, param_value, n_rank,
+            n_samples, param_value, n_objects, param_value, n_rank,
             scale=scale, noise=noise, binarize=(PROBLEM == 'classification'), random_state=seed)
     elif param_name == 'K':
         # iterating by K
