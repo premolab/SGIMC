@@ -55,16 +55,24 @@ class IMCProblem(object):
 
 def imc_descent(problem, W, H, step_fn, step_kwargs={},
                 n_iterations=500, return_history=False,
-                rtol=1e-5, atol=1e-8, verbose=False):
+                rtol=1e-5, atol=1e-8, verbose=False,
+                check_product=True):
 
     assert isinstance(problem, IMCProblem), \
         """`problem` must be an IMC problem."""
 
-    iteration, history_W, history_H = 0, [W], [H]
+    b_stop, iteration, history_W, history_H = False, 0, [W], [H]
     n_sq_dim_W, n_sq_dim_H = sqrt(np.prod(W.shape)), sqrt(np.prod(H.shape))
+
+    # patch 2017-12-13 -- stopping criterion on the product of W H
+    M, n_sq_dim_M = None, 0
+    if check_product:
+        M = np.dot(W, H.T)
+        n_sq_dim_M = sqrt(np.prod(M.shape))
+
     with tqdm.tqdm(initial=iteration, total=n_iterations,
                    disable=not verbose) as pbar:
-        while iteration < n_iterations:
+        while (iteration < n_iterations) and (not b_stop):
             # Gauss-Siedel iteration
             W_old, W = W, step_fn(problem, W, H, **step_kwargs)
 
@@ -78,15 +86,25 @@ def imc_descent(problem, W, H, step_fn, step_kwargs={},
                 history_H.append(H)
 
             # stopping criterion: proximity to the previous value
-            tol_W = n_sq_dim_W * atol + rtol * \
-                np.linalg.norm(W_old.reshape(-1), 2)
-            div_H = np.linalg.norm((H_old - H).reshape(-1), 2)
+            if not check_product:
+                tol_H = n_sq_dim_H * atol + rtol * \
+                    np.linalg.norm(H_old.reshape(-1), 2)
+                div_H = np.linalg.norm((H_old - H).reshape(-1), 2)
 
-            tol_H = n_sq_dim_H * atol + rtol * \
-                np.linalg.norm(H_old.reshape(-1), 2)
-            div_W = np.linalg.norm((W_old - W).reshape(-1), 2)
-            if div_W <= tol_W and div_H <= tol_H:
-                break
+                tol_W = n_sq_dim_W * atol + rtol * \
+                    np.linalg.norm(W_old.reshape(-1), 2)
+                div_W = np.linalg.norm((W_old - W).reshape(-1), 2)
+
+                b_stop = (div_W <= tol_W) and (div_H <= tol_H)
+
+            else:
+                M_old, M = M, np.dot(W, H.T)
+
+                tol_M = n_sq_dim_M * atol + rtol * \
+                    np.linalg.norm(M_old.reshape(-1), 2)
+                div_M = np.linalg.norm((M_old - M).reshape(-1), 2)
+
+                b_stop = (div_M <= tol_M)
             # end if
         # end while
     # end with
