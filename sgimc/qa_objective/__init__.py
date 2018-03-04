@@ -4,6 +4,8 @@ from sklearn.metrics import mean_squared_error, accuracy_score
 
 from .base import QuadraticApproximation
 
+from scipy.special import expit
+
 
 class QAObjectiveL2Loss(QuadraticApproximation):
     """Quadratic Approximation for the L2 loss."""
@@ -75,12 +77,6 @@ class QAObjectiveHuberLoss(QAObjectiveL2Loss):
         return (abs(predict - target) <= eps) * 1.
 
 
-def sigmoid(x):
-    """Compute the sigmoid transformation of the input."""
-    out = 1 / (1 + np.exp(- abs(x)))
-    return np.where(x > 0, out, 1 - out)
-
-
 class QAObjectiveLogLoss(QuadraticApproximation):
     """Quadratic Approximation for the Logistic loss."""
 
@@ -95,19 +91,17 @@ class QAObjectiveLogLoss(QuadraticApproximation):
     @staticmethod
     def v_func(logit, target):
         """Get the loss values."""
-        out = np.log1p(np.exp(- abs(logit)))
-        out -= np.minimum(target * logit, 0)
-        return out
+        return np.logaddexp(0, - target * logit)
 
     @staticmethod
     def g_func(logit, target):
         """Get the gradient statistics."""
-        return sigmoid(logit * target) * target - target
+        return - target * expit(-logit * target)
 
     @staticmethod
     def h_func(logit, target):
         """Get the Hessian statistics."""
-        prob = sigmoid(logit)
+        prob = expit(logit)
         return prob * (1 - prob)
 
     @staticmethod

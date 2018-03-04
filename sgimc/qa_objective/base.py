@@ -2,7 +2,7 @@ import numpy as np
 
 from ..ops import op_s, op_d
 
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, isspmatrix
 
 
 class QuadraticApproximation(object):
@@ -21,8 +21,8 @@ class QuadraticApproximation(object):
         self.n_threads, self.approx_type = n_threads, approx_type.lower()
         assert self.approx_type in ("const", "linear", "quadratic")
 
-        self.R, self.X = R.tocsr(), np.asfortranarray(X)
-        self.YH = np.asfortranarray(np.dot(Y, H))
+        self.X = csr_matrix(X) if isspmatrix(X) else np.asfortranarray(X)
+        self.R, self.YH = R.tocsr(), np.asfortranarray(np.dot(Y, H))
 
         self.update(W)
 

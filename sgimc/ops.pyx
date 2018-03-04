@@ -29,56 +29,12 @@ cdef extern from "src/threads.c":
     int __has_omp "has_omp" () nogil
 
 
-cdef extern from "src/op_d/full.c":
-    int __op_d "full_op_d" (
-        const int *indptr, const int *indices,
-        const int n_1, const int d_1, const double *X,
-        const int n_2, const int k, const double *Z,
-        const double *D, double *out) nogil
-
-cdef extern from "src/op_d/omp_full.c":
-    int __omp_op_d "omp_op_d"(
-        const int *indptr, const int *indices,
-        const int n_1, const int d_1, const double *X,
-        const int n_2, const int k, const double *Z,
-        const double *D, double *out, const int n_threads) nogil
-
-cdef extern from "src/op_s/full.c":
-    int __op_s "full_op_s"(
-        const int *indptr, const int *indices,
-        const int n_1, const int d_1, const double *X,
-        const int n_2, const int k, const double *Z,
-        const double *S, double *out) nogil
-
-cdef extern from "src/op_s/omp_full.c":
-    int __omp_op_s "omp_op_s"(
-        const int *indptr, const int *indices,
-        const int n_1, const int d_1, const double *X,
-        const int n_2, const int k, const double *Z,
-        const double *S, double *out, const int n_threads) nogil
-
-cdef extern from "src/op_d/diag.c":
-    int __diag_op_d "diag_op_d"(
-        const int *indptr, const int *indices,
-        const int n_1, const int n_2, const int k,
-        const double *X, const double *Z,
-        const double *D, double *out) nogil
-
-cdef extern from "src/op_s/diag.c":
-    int __diag_op_s "diag_op_s"(
-        const int *indptr, const int *indices,
-        const int n_1, const int n_2, const int k,
-        const double *X, const double *Z,
-        const double *S, double *out) nogil
-
-
 def has_omp():
     """Check if compiled with OMP support."""
     return __has_omp() > 0
 
 
-def op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1, :] D,
-         int n_threads=1):
+def op_d(object R, object X, double[::1, :] Z, double[::1, :] D, int n_threads=1):
     """Compute the `op_d` operation returning data for a sparse matrix.
 
     The function maps a dense `D` to a flat array of data for a CSR sparse
@@ -89,7 +45,7 @@ def op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1, :] D,
     R : CSR sparse matrix, shape = [n_1, n_2]
         Determines the sprasity structure to compute the results for.
 
-    X : dense matrix, shape = [n_1, d_1], order = "F"
+    X : CSR sparse or dense matrix, shape = [n_1, d_1], order="F"
         The left matrix in the result.
 
     Z : dense matrix, shape = [n_2, k], order = "F"
@@ -108,33 +64,21 @@ def op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1, :] D,
         in CSR matrix R.
     """
     # take a dense D and return an sparse X D Z'
+
     if not isinstance(R, csr_matrix):
         raise TypeError("""`R` must be CSR matrix.""")
 
-    # shapes
-    cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
-    cdef int d_1 = X.shape[1], k = Z.shape[1]
-
-    # sparsity
-    cdef int[::1] indptr = R.indptr, indices = R.indices
-
-    # output
     cdef double[::1] S = np.zeros(R.nnz, dtype="double")
-
     cdef int errcode = -1
 
     if not has_omp():
         n_threads = 1
 
-    if n_threads != 1:
-        errcode = __omp_op_d(&indptr[0], &indices[0],
-                         n_1, d_1, &X[0, 0], n_2, k, &Z[0, 0],
-                         &D[0, 0], &S[0], n_threads)
+    if not isinstance(X, csr_matrix):
+        errcode = _dense_op_d(R, X, Z, D, S, n_threads)
     else:
-        errcode = __op_d(&indptr[0], &indices[0],
-                         n_1, d_1, &X[0, 0], n_2, k, &Z[0, 0],
-                         &D[0, 0], &S[0])
-    # end if
+        errcode = _sparse_op_d(R, X, Z, D, S, n_threads)
+    # endif
 
     if errcode != 0:
         raise MemoryError
@@ -142,8 +86,7 @@ def op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1, :] D,
     return S.base
 
 
-def op_s(object R, double[::1, :] X, double[::1, :] Z, double[::1] S,
-         int n_threads=1):
+def op_s(object R, object X, double[::1, :] Z, double[::1] S, int n_threads=1):
     """Compute the `op_s` operation returning dense matrix.
 
     The function takes a flat array of data for a CSR sparse matrix `S` with
@@ -154,7 +97,7 @@ def op_s(object R, double[::1, :] X, double[::1, :] Z, double[::1] S,
     R : CSR sparse matrix, shape = [n_1, n_2]
         Determines the sprasity structure to compute the results for.
 
-    X : dense matrix, shape = [n_1, d_1], order = "F"
+    X : CSR sparse or dense matrix, shape = [n_1, d_1], order="F"
         The left matrix in the result.
 
     Z : dense matrix, shape = [n_2, k], order = "F"
@@ -175,30 +118,18 @@ def op_s(object R, double[::1, :] X, double[::1, :] Z, double[::1] S,
     if not isinstance(R, csr_matrix):
         raise TypeError("""`R` must be CSR matrix.""")
 
-    # shapes
-    cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
     cdef int d_1 = X.shape[1], k = Z.shape[1]
-
-    # sparsity
-    cdef int[::1] indptr = R.indptr, indices = R.indices
-
-    # output
     cdef double[::1, :] D = np.zeros((d_1, k), dtype="double", order="F")
-
     cdef int errcode = -1
 
     if not has_omp():
         n_threads = 1
 
-    if n_threads != 1:
-        errcode = __omp_op_s(&indptr[0], &indices[0],
-                             n_1, d_1, &X[0, 0], n_2, k, &Z[0, 0],
-                             &S[0], &D[0, 0], n_threads)
+    if not isinstance(X, csr_matrix):
+        errcode = _dense_op_s(R, X, Z, S, D, n_threads)
     else:
-        errcode = __op_s(&indptr[0], &indices[0],
-                         n_1, d_1, &X[0, 0], n_2, k, &Z[0, 0],
-                         &S[0], &D[0, 0])
-    # end if
+        errcode = _sparse_op_s(R, X, Z, S, D, n_threads)
+    # endif
 
     if errcode != 0:
         raise MemoryError
@@ -243,14 +174,14 @@ def diag_op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1] D):
     cdef int n_1 = X.shape[0], n_2 = Z.shape[0], k = X.shape[1]
 
     # sparsity
-    cdef int[::1] indptr = R.indptr, indices = R.indices
+    cdef int[::1] Sp = R.indptr, Sj = R.indices
 
     # output
     cdef double[::1] S = np.zeros(R.nnz, dtype="double")
 
     cdef int errcode = -1
 
-    errcode = __diag_op_d(&indptr[0], &indices[0], n_1, n_2, k,
+    errcode = __diag_op_d(&Sp[0], &Sj[0], n_1, n_2, k,
                           &X[0, 0], &Z[0, 0], &D[0], &S[0])
 
     if errcode != 0:
@@ -298,14 +229,14 @@ def diag_op_s(object R, double[::1, :] X, double[::1, :] Z, double[::1] S):
     cdef int n_1 = X.shape[0], n_2 = Z.shape[0], k = X.shape[1]
 
     # sparsity
-    cdef int[::1] indptr = R.indptr, indices = R.indices
+    cdef int[::1] Sp = R.indptr, Sj = R.indices
 
     # output
     cdef double[::1] D = np.zeros(k, dtype="double")
 
     cdef int errcode = -1
 
-    errcode = __diag_op_s(&indptr[0], &indices[0], n_1, n_2, k,
+    errcode = __diag_op_s(&Sp[0], &Sj[0], n_1, n_2, k,
                           &X[0, 0], &Z[0, 0], &S[0], &D[0])
 
     if errcode != 0:
@@ -501,3 +432,120 @@ def shrink_row(double[::1] D, double C_lasso, double C_group, double C_ridge):
     # end with
 
     return out.base
+
+
+def _dense_op_d(object R,
+                     double[::1, :] X,
+                     double[::1, :] Z,
+                     double[::1, :] D,
+                     double[::1] S,
+                     int n_threads=1):
+    cdef int errcode = -1
+    cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
+    cdef int d_1 = X.shape[1], k = Z.shape[1]
+    cdef int[::1] Sp = R.indptr, Sj = R.indices
+
+    if n_threads != 1:
+        errcode = __omp_dense_op_d(
+            n_1, d_1, &X[0, 0],
+            n_2, k, &Z[0, 0],
+            &D[0, 0],
+            &Sp[0], &Sj[0], &S[0],
+            n_threads)
+    else:
+        errcode = __op_dense_d(
+            n_1, d_1, &X[0, 0],
+            n_2, k, &Z[0, 0],
+            &D[0, 0],
+            &Sp[0], &Sj[0], &S[0])
+    # end if
+
+    return errcode
+
+
+def _sparse_op_d(object R,
+                      object X,
+                      double[::1, :] Z,
+                      double[::1, :] D,
+                      double[::1] S,
+                      int n_threads=1):
+    cdef int errcode = -1
+    cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
+    cdef int d_1 = X.shape[1], k = Z.shape[1]
+    cdef int[::1] Sp = R.indptr, Sj = R.indices
+    cdef int[::1] Xp = X.indptr, Xj = X.indices
+    cdef double[::1] Xx = X.data
+
+    if n_threads != 1:
+        errcode = __omp_sparse_op_d(
+            n_1, d_1, &Xp[0], &Xj[0], &Xx[0],
+            n_2, k, &Z[0, 0],
+            &D[0, 0],
+            &Sp[0], &Sj[0], &S[0], n_threads)
+    else:
+        errcode = __sparse_op_d(
+            n_1, d_1, &Xp[0], &Xj[0], &Xx[0],
+            n_2, k, &Z[0, 0],
+            &D[0, 0],
+            &Sp[0], &Sj[0], &S[0])
+    # end if
+
+    return errcode
+
+
+def _dense_op_s(object R,
+                     double[::1, :] X,
+                     double[::1, :] Z,
+                     double[::1] S,
+                     double[::1, :] D,
+                     int n_threads=1):
+    cdef int errcode = -1
+    cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
+    cdef int d_1 = X.shape[1], k = Z.shape[1]
+    cdef int[::1] Sp = R.indptr, Sj = R.indices
+
+    if n_threads != 1:
+        errcode = __omp_dense_op_s(
+            n_1, d_1, &X[0, 0],
+            n_2, k, &Z[0, 0],
+            &Sp[0], &Sj[0], &S[0],
+            &D[0, 0], n_threads)
+    else:
+        errcode = __dense_op_s(
+            n_1, d_1, &X[0, 0],
+            n_2, k, &Z[0, 0],
+            &Sp[0], &Sj[0], &S[0],
+            &D[0, 0])
+    # end if
+
+    return errcode
+
+
+def _sparse_op_s(object R,
+                      object X,
+                      double[::1, :] Z,
+                      double[::1] S,
+                      double[::1, :] D,
+                      int n_threads=1):
+    cdef int errcode = -1
+    cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
+    cdef int d_1 = X.shape[1], k = Z.shape[1]
+    cdef int[::1] Sp = R.indptr, Sj = R.indices
+    cdef int[::1] Xp = X.indptr, Xj = X.indices
+    cdef double[::1] Xx = X.data
+
+    if n_threads != 1:
+        errcode = __omp_sparse_op_s(
+            n_1, d_1, &Xp[0], &Xj[0], &Xx[0],
+            n_2, k, &Z[0, 0],
+            &Sp[0], &Sj[0], &S[0],
+            &D[0, 0], n_threads)
+    else:
+        errcode = __sparse_op_s(
+            n_1, d_1, &Xp[0], &Xj[0], &Xx[0],
+            n_2, k, &Z[0, 0],
+            &Sp[0], &Sj[0], &S[0],
+            &D[0, 0])
+    # end if
+
+    return errcode
