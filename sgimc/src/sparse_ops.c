@@ -28,7 +28,7 @@ int sparse_op_s(const int n_1,
         // if(Sp[i] == Sp[i + 1])
         //     continue;
 
-        // get \tau = \sum_{j:i\in \Omega} S_{ij} e_j' Z
+        // get \tau_i = \sum_{j:i\in \Omega} S_{ij} e_j' Z
         memset(tmp, 0, k * sizeof(double));
         for(j = Sp[i]; j < Sp[i + 1]; ++j) {
             for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
@@ -36,7 +36,7 @@ int sparse_op_s(const int n_1,
             // cblas_daxpy(k, S[j], &Z[Sj[j]], n_2, tmp, 1);
         }
 
-        // multiply X'e_i \tau utilizing sparsity
+        // multiply X'e_i \tau_i utilizing sparsity
         for(l = Xp[i]; l < Xp[i + 1]; ++l) {
             for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
                 out[tt] += tmp[t] * X[l];  // out is d_1 x k fortran
@@ -124,78 +124,82 @@ int omp_sparse_op_s(const int n_1,
     const int n_effective_threads = get_max_threads(n_threads);
 
     // #pragma omp parallel for schedule(static) reduction(+:f)
-    #if 1
+    int i, l, j, t, tt;
+
+    #if 0
     #pragma omp parallel \
                 shared(Sp, Sj, S, Xp, Xj, X, Z) \
-                num_threads(n_effective_threads)
+                num_threads(n_effective_threads) \
+                private(i, l, j, t, tt)
     {
         // Notes: this is poorly parallelized
-        // Notes: row-col parallel doesn't work (race)
+        // Notes: vanilla row-col parallel doesn't work (race)
         #pragma omp for schedule(static) nowait
-        for(int t = 0; t < k; ++t) {
-            int p = t * n_2, q = t * d_1;
-            for(int i = 0; i < n_1; ++i) {
+        for(t = 0; t < k; ++t) {
+            const double *Zt = &Z[t * n_2];  // Z is n_2 x k fortran
+            double *Bt = &out[t * d_1];      // `out` is d_1 x k fortran
+            for(i = 0; i < n_1; ++i) {
                 double tmp = 0;
-                for(int j = Sp[i]; j < Sp[i + 1]; ++j)
-                    tmp += Z[Sj[j] + p] * S[j];  // Z is n_2 x k fortran
+                for(j = Sp[i]; j < Sp[i + 1]; ++j)
+                    tmp += Zt[Sj[j]] * S[j];
 
-                for(int l = Xp[i]; l < Xp[i + 1]; ++l)
-                    out[Xj[l] + q] += tmp * X[l];  // out is d_1 x k fortran
+                for(l = Xp[i]; l < Xp[i + 1]; ++l)
+                    Bt[Xj[l]] += tmp * X[l];
             }
         }
-        // This is slow
-        // #pragma omp for collapse(2) schedule(static) nowait
-        // for(int p = 0; p < d_1; ++p) {
-        //     for(int q = 0; q < k; ++q) {
-        //         double *val = &out[p + q * d_1];  // out is d_1 x k fortran
-        //         const double *Zq = &Z[q * n_2];
-        //         for(int i = 0; i < n_1; ++i) {
-        //             for(int l = Xp[i]; l < Xp[i + 1]; ++l) {
-        //                 if(p != Xj[l]) continue;
-        //                 double tmp = 0;
-        //                 for(int j = Sp[i]; j < Sp[i + 1]; ++j)
-        //                     tmp += Zq[Sj[j]] * S[j];
-        //                 *val += tmp * X[l];
-        //             }
-        //         }
-        //     }
-        // }
     }
 
     errcode = 0;
     #else
+
     double * const *local = (double * const *) \
-        alloc_local(n_effective_threads, k * (d_1 + 1) * sizeof(double));
+        alloc_local(n_effective_threads, k * d_1 * sizeof(double));
     if(local == NULL)
         goto lbl_exit;
 
+    double *tmp;
+
     #pragma omp parallel \
                 shared(Sp, Sj, S, Xp, Xj, X, Z, local) \
-                num_threads(n_effective_threads)
+                num_threads(n_effective_threads) \
+                private(i, l, j, t, tt, tmp)
     {
-        double * const tmp = local[omp_get_thread_num()];
-        double * const buf = &buf[k];
+        tmp = (double *) malloc(k * sizeof(double));
+        double * const buf = local[omp_get_thread_num()];
 
-        #pragma omp for schedule(static) nowait
-        for(int i = 0; i < n_1; ++i) {
+        #pragma omp for schedule(dynamic,50) nowait
+        for(i = 0; i < n_1; ++i) {
             // get \tau = \sum_{j:i\in \Omega} S_{ij} e_j' Z
             memset(tmp, 0, k * sizeof(double));
-            for(int j = Sp[i]; j < Sp[i + 1]; ++j) {
-                for(int t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
+            for(j = Sp[i]; j < Sp[i + 1]; ++j) {
+                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
                     tmp[t] += Z[tt] * S[j];  // Z is n_2 x k fortran
             }
 
             // multiply X'e_i \tau utilizing sparsity
-            for(int l = Xp[i]; l < Xp[i + 1]; ++l) {
-                for(int t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1) {
-                    #pragma omp atomic  // this is slow
-                    buf[tt] += tmp[t] * X[l];  // out is d_1 x k fortran
+            for(l = Xp[i]; l < Xp[i + 1]; ++l) {
+                double *row = &buf[Xj[l] * k];
+                for(t = 0; t < k; ++t) {
+                    row[t] += tmp[t] * X[l];  // `buf` is d_1 x k row-major
+                }
+            }
+        }
+
+        free(tmp);
+
+        #pragma omp barrier
+
+        #pragma omp for collapse(2) schedule(static) nowait
+        for(i = 0; i < d_1; ++i) {
+            for(j = 0; j < k; ++j) {
+                for(l = 0; l < n_effective_threads; ++l) {
+                    out[i + j * d_1] += local[l][j + i * k];
                 }
             }
         }
     }
 
-errcode = 0;
+    errcode = 0;
 
 lbl_exit: ;
     free_local((void**)local, n_effective_threads);

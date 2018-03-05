@@ -23,7 +23,9 @@ int dense_op_s(const int n_1,
 
     int i, j, l, ll, t, tt;
     for(i = 0; i < n_1; ++i) {
-        // get \tau = \sum_{j:i\in \Omega} S_{ij} e_j' Z
+        // if(Sp[i] == Sp[i + 1]) continue;
+
+        // get \tau_i = \sum_{j:(i,j)\in \Omega} S_{ij} e_j' Z
         memset(tmp, 0, k * sizeof(double));
         for(j = Sp[i]; j < Sp[i + 1]; ++j) {
             for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
@@ -31,7 +33,7 @@ int dense_op_s(const int n_1,
             // cblas_daxpy(k, S[j], &Z[Sj[j]], n_2, tmp, 1);
         }
 
-        // multiply X'e_i \tau
+        // multiply X'e_i \tau_i
         for(l = 0, ll=i; l < d_1; ++l, ll+=n_1) {
             for(t = 0, tt = l; t < k; ++t, tt+=d_1)
                 out[tt] += tmp[t] * X[ll];  // out is d_1 x k fortran
@@ -95,6 +97,7 @@ lbl_exit: ;
 #include "threads.h"
 
 
+#if 0
 int omp_dense_op_s(const int n_1,
                    const int d_1,
                    const double *X,
@@ -125,7 +128,7 @@ int omp_dense_op_s(const int n_1,
             double *col = &out[t * d_1];  // out is d_1 x k fortran
 
             for(int i = 0; i < n_1; ++i) {
-                // get \tau_{it} = \sum_{j:i\in \Omega} S_{ij} e_j' Z e_t
+                // get \tau_{it} = \sum_{j:(i,j)\in \Omega} S_{ij} e_j' Z e_t
                 double tmp = 0;
                 for(int j = Sp[i]; j < Sp[i + 1]; ++j)
                     tmp += row[Sj[j]] * S[j];  // Z is n_2 x k fortran
@@ -141,6 +144,81 @@ int omp_dense_op_s(const int n_1,
 
     return errcode;
 }
+
+#else
+
+int omp_dense_op_s(const int n_1,
+                   const int d_1,
+                   const double *X,
+                   const int n_2,
+                   const int k,
+                   const double *Z,
+                   const int *Sp,
+                   const int *Sj,
+                   const double *S,
+                         double *out,
+                   const int n_threads)
+{
+    // compute entries of dense X' S Z
+    int errcode = -1;
+
+    // shared thread variables
+    const int n_effective_threads = get_max_threads(n_threads);
+
+    // #pragma omp parallel for schedule(static) reduction(+:f)
+    int i, l, ll, j, t, tt;
+    double *tmp;
+
+    double * const *local = (double * const *) \
+        alloc_local(n_effective_threads, k * d_1 * sizeof(double));
+    if(local == NULL)
+        goto lbl_exit;
+
+    #pragma omp parallel \
+                shared(Sp, Sj, S, X, Z, local) \
+                num_threads(n_effective_threads) \
+                private(i, l, ll, j, t, tt, tmp)
+    {
+        double * const buf = local[omp_get_thread_num()];
+        tmp = (double *) malloc(k * sizeof(double));
+
+        #pragma omp for schedule(dynamic,50) nowait
+        for(i = 0; i < n_1; ++i) {
+            // get \tau_i = \sum_{j:(i,j)\in \Omega} S_{ij} e_j' Z
+            memset(tmp, 0, k * sizeof(double));
+            for(j = Sp[i]; j < Sp[i + 1]; ++j) {
+                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
+                    tmp[t] += Z[tt] * S[j];  // Z is n_2 x k fortran
+            }
+
+            // multiply X'e_i \tau_i
+            for(l = 0, ll=i, tt=0; l < d_1; ++l, ll+=n_1, tt+=k) {
+                for(t = 0; t < k; ++t)
+                    buf[tt + t] += tmp[t] * X[ll];  // buf is d_1 x k row-major
+            }
+        }
+
+        free(tmp);
+
+        #pragma omp barrier
+
+        #pragma omp for collapse(2) schedule(static) nowait
+        for(i = 0; i < d_1; ++i) {
+            for(j = 0; j < k; ++j) {
+                for(l = 0; l < n_effective_threads; ++l) {
+                    out[i + j * d_1] += local[l][j + i * k];  // out is d_1 x k fortran
+                }
+            }
+        }
+    }
+    errcode = 0;
+
+lbl_exit: ;
+    free_local((void**)local, n_effective_threads);
+
+    return errcode;
+}
+#endif
 
 
 int omp_dense_op_d(const int n_1,
