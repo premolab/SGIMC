@@ -5,6 +5,8 @@ import numpy as np
 
 import tqdm
 
+from sklearn.utils.extmath import safe_sparse_dot
+
 
 class IMCProblem(object):
     """A container for the IMC problem."""
@@ -28,7 +30,9 @@ class IMCProblem(object):
 
     def prediction(self, W, H):
         """Return the prediction for the problem."""
-        return np.dot(np.dot(self._X, W), np.dot(self._Y, H).T)
+        return safe_sparse_dot(safe_sparse_dot(self._X, W),
+                               safe_sparse_dot(self._Y, H).T,
+                               dense_output=True)
 
     def score(self, predict, target):
         """Compute the score for this type of problem."""

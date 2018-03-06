@@ -4,16 +4,16 @@
 
 int sparse_op_s(const int n_1,
                 const int d_1,
-                const int *Xp,
-                const int *Xj,
-                const double *X,
+                const int * const Xp,
+                const int * const Xj,
+                const double * const X,
                 const int n_2,
                 const int k,
-                const double *Z,
-                const int *Sp,
-                const int *Sj,
-                const double *S,
-                      double *out)
+                const double * const Z,
+                const int * const Sp,
+                const int * const Sj,
+                const double * const S,
+                      double * out)
 {
     // compute entries of dense X' S Z (single threaded)
     int errcode = -1;
@@ -31,15 +31,17 @@ int sparse_op_s(const int n_1,
         // get \tau_i = \sum_{j:i\in \Omega} S_{ij} e_j' Z
         memset(tmp, 0, k * sizeof(double));
         for(j = Sp[i]; j < Sp[i + 1]; ++j) {
+            const double Sij = S[j];
             for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                tmp[t] += Z[tt] * S[j];  // Z is n_2 x k fortran
+                tmp[t] += Z[tt] * Sij;  // Z is n_2 x k fortran
             // cblas_daxpy(k, S[j], &Z[Sj[j]], n_2, tmp, 1);
         }
 
         // multiply X'e_i \tau_i utilizing sparsity
         for(l = Xp[i]; l < Xp[i + 1]; ++l) {
+            const double Xil = X[l];
             for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
-                out[tt] += tmp[t] * X[l];  // out is d_1 x k fortran
+                out[tt] += tmp[t] * Xil;  // out is d_1 x k fortran
             // cblas_daxpy(k, X[l], tmp, 1, &out[Xj[l]], d_1);
         }
     }
@@ -55,16 +57,16 @@ lbl_exit: ;
 
 int sparse_op_d(const int n_1,
                 const int d_1,
-                const int *Xp,
-                const int *Xj,
-                const double *X,
+                const int * const Xp,
+                const int * const Xj,
+                const double * const X,
                 const int n_2,
                 const int k,
-                const double *Z,
-                const double *D,
-                const int *Sp,
-                const int *Sj,
-                      double *out)
+                const double * const Z,
+                const double * const D,
+                const int * const Sp,
+                const int * const Sj,
+                      double * out)
 {
     // compute entries of the CSR sparse X D Z' (single threaded)
     int errcode = -1;
@@ -79,9 +81,10 @@ int sparse_op_d(const int n_1,
         // compute e_i' XD
         memset(tmp, 0, sizeof(double) * k);
         for(l = Xp[i]; l < Xp[i+1]; ++l) {
+            const double Xil = X[l];
             for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
                 // compute sum_l e_i' X e_l e_l' D e_t
-                tmp[t] += X[l] * D[tt];
+                tmp[t] += Xil * D[tt];
         }
 
         // compute e_i' XD e_t e_t' Z' e_{Sj[j]}
@@ -105,16 +108,16 @@ lbl_exit: ;
 
 int omp_sparse_op_s(const int n_1,
                     const int d_1,
-                    const int *Xp,
-                    const int *Xj,
-                    const double *X,
+                    const int * const Xp,
+                    const int * const Xj,
+                    const double * const X,
                     const int n_2,
                     const int k,
-                    const double *Z,
-                    const int *Sp,
-                    const int *Sj,
-                    const double *S,
-                          double *out,
+                    const double * const Z,
+                    const int * const Sp,
+                    const int * const Sj,
+                    const double * const S,
+                          double * out,
                     const int n_threads)
 {
     // compute entries of dense X' S Z
@@ -128,7 +131,6 @@ int omp_sparse_op_s(const int n_1,
 
     #if 0
     #pragma omp parallel \
-                shared(Sp, Sj, S, Xp, Xj, X, Z) \
                 num_threads(n_effective_threads) \
                 private(i, l, j, t, tt)
     {
@@ -158,9 +160,7 @@ int omp_sparse_op_s(const int n_1,
         goto lbl_exit;
 
     double *tmp;
-
-    #pragma omp parallel \
-                shared(Sp, Sj, S, Xp, Xj, X, Z, local) \
+    #pragma omp parallel shared(local) \
                 num_threads(n_effective_threads) \
                 private(i, l, j, t, tt, tmp)
     {
@@ -172,15 +172,17 @@ int omp_sparse_op_s(const int n_1,
             // get \tau = \sum_{j:i\in \Omega} S_{ij} e_j' Z
             memset(tmp, 0, k * sizeof(double));
             for(j = Sp[i]; j < Sp[i + 1]; ++j) {
+                const double Sij = S[j];
                 for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                    tmp[t] += Z[tt] * S[j];  // Z is n_2 x k fortran
+                    tmp[t] += Z[tt] * Sij;  // Z is n_2 x k fortran
             }
 
             // multiply X'e_i \tau utilizing sparsity
             for(l = Xp[i]; l < Xp[i + 1]; ++l) {
+                const double Xil = X[l];
                 double *row = &buf[Xj[l] * k];
                 for(t = 0; t < k; ++t) {
-                    row[t] += tmp[t] * X[l];  // `buf` is d_1 x k row-major
+                    row[t] += tmp[t] * Xil;  // `buf` is d_1 x k row-major
                 }
             }
         }
@@ -211,15 +213,15 @@ lbl_exit: ;
 
 int omp_sparse_op_d(const int n_1,
                     const int d_1,
-                    const int *Xp,
-                    const int *Xj,
-                    const double *X,
+                    const int * const Xp,
+                    const int * const Xj,
+                    const double * const X,
                     const int n_2,
                     const int k,
-                    const double *Z,
-                    const double *D,
-                    const int *Sp,
-                    const int *Sj,
+                    const double * const Z,
+                    const double * const D,
+                    const int * const Sp,
+                    const int * const Sj,
                           double *out,
                     const int n_threads)
 {
@@ -234,25 +236,27 @@ int omp_sparse_op_d(const int n_1,
     if(local == NULL)
         goto lbl_exit;
 
-    #pragma omp parallel \
-                shared(Sp, Sj, out, Xp, Xj, X, Z, local) \
-                num_threads(n_effective_threads)
+    int i, l, t, tt, j;
+    #pragma omp parallel shared(local) \
+                num_threads(n_effective_threads) \
+                private(i, l, t, tt, j)
     {
         double * const tmp = local[omp_get_thread_num()];
 
         #pragma omp for schedule(static) nowait
-        for(int i = 0; i < n_1; ++i) {
+        for(i = 0; i < n_1; ++i) {
             // compute e_i' XD
             memset(tmp, 0, sizeof(double) * k);
-            for(int l = Xp[i]; l < Xp[i+1]; ++l) {
-                for(int t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
+            for(l = Xp[i]; l < Xp[i+1]; ++l) {
+                const double Xil = X[l];
+                for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
                     // compute sum_l e_i' X e_l e_l' D e_t
-                    tmp[t] += X[l] * D[tt];
+                    tmp[t] += Xil * D[tt];
             }
 
             // compute e_i' XD e_t e_t' Z' e_{Sj[j]}
-            for(int j = Sp[i]; j < Sp[i+1]; ++j)
-                for(int t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
+            for(j = Sp[i]; j < Sp[i+1]; ++j)
+                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
                     out[j] += tmp[t] * Z[tt];
         }
     }
@@ -264,6 +268,5 @@ lbl_exit: ;
 
     return errcode;
 }
-
 
 #endif

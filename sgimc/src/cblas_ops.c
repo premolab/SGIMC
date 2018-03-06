@@ -7,13 +7,13 @@
 
 int cblas_op_s(const int n_1,
                const int d_1,
-               const double *X,
+               const double * const X,
                const int n_2,
                const int k,
-               const double *Z,
-               const int *Sp,
-               const int *Sj,
-               const double *S,
+               const double * const Z,
+               const int * const Sp,
+               const int * const Sj,
+               const double * const S,
                      double *out)
 {
     // compute entries of the CSR sparse X' S Z
@@ -34,13 +34,13 @@ int cblas_op_s(const int n_1,
 
 int cblas_op_d(const int n_1,
                const int d_1,
-               const double *X,
+               const double * const X,
                const int n_2,
                const int k,
-               const double *Z,
-               const double *D,
-               const int *Sp,
-               const int *Sj,
+               const double * const Z,
+               const double * const D,
+               const int * const Sp,
+               const int * const Sj,
                      double *out)
 {
     const int BLOCK_SIZE = 256;
@@ -138,13 +138,13 @@ lbl_exit: ;
 
 int omp_cblas_op_s(const int n_1,
                    const int d_1,
-                   const double *X,
+                   const double * const X,
                    const int n_2,
                    const int k,
-                   const double *Z,
-                   const int *Sp,
-                   const int *Sj,
-                   const double *S,
+                   const double * const Z,
+                   const int * const Sp,
+                   const int * const Sj,
+                   const double * const S,
                          double *out,
                    const int n_threads)
 {
@@ -160,8 +160,7 @@ int omp_cblas_op_s(const int n_1,
 
     // #pragma omp parallel for schedule(static) reduction(+:f)
     // int i, j;
-    #pragma omp parallel \
-                shared(Sp, Sj, S, X, Z, local) \
+    #pragma omp parallel shared(local) \
                 num_threads(n_effective_threads)
     {
         double * const buf = local[omp_get_thread_num()];
@@ -191,13 +190,13 @@ lbl_exit: ;
 
 int omp_cblas_op_d(const int n_1,
                    const int d_1,
-                   const double *X,
+                   const double * const X,
                    const int n_2,
                    const int k,
-                   const double *Z,
-                   const double *D,
-                   const int *Sp,
-                   const int *Sj,
+                   const double * const Z,
+                   const double * const D,
+                   const int * const Sp,
+                   const int * const Sj,
                          double *out,
                    const int n_threads)
 {
@@ -234,9 +233,7 @@ int omp_cblas_op_d(const int n_1,
                         0.0, XD, BLOCK_SIZE);
         }
 
-        #pragma omp parallel \
-                    shared(Sp, Sj, XD, Z, out) \
-                    num_threads(n_effective_threads)
+        #pragma omp parallel num_threads(n_effective_threads)
         {
             int j, l, size;  // thrad-private variables
             double * const tmp = local_tmp[omp_get_thread_num()];

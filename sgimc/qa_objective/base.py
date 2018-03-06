@@ -4,6 +4,8 @@ from ..ops import op_s, op_d
 
 from scipy.sparse import csr_matrix, isspmatrix
 
+from sklearn.utils.extmath import safe_sparse_dot
+
 
 class QuadraticApproximation(object):
     r"""The base class for quadratic approximation for the IMC objective.
@@ -22,7 +24,9 @@ class QuadraticApproximation(object):
         assert self.approx_type in ("const", "linear", "quadratic")
 
         self.X = csr_matrix(X) if isspmatrix(X) else np.asfortranarray(X)
-        self.R, self.YH = R.tocsr(), np.asfortranarray(np.dot(Y, H))
+        self.YH = np.asfortranarray(safe_sparse_dot(Y, H, dense_output=True))
+
+        self.R = R.tocsr()
 
         self.update(W)
 

@@ -26,34 +26,8 @@ cdef extern from "src/dense_ops.c":
               double *out,
         const int n_threads) nogil
 
-# cdef extern from "src/dense_ops.c":
-#     int __op_dense_d "dense_op_d"(
-#         const int n_1,
-#         const int d_1,
-#         const double *X,
-#         const int n_2,
-#         const int k,
-#         const double *Z,
-#         const double *D,
-#         const int *Sp,
-#         const int *Sj,
-#               double *out) nogil
-#     int __omp_dense_op_d "omp_dense_op_d"(
-#         const int n_1,
-#         const int d_1,
-#         const double *X,
-#         const int n_2,
-#         const int k,
-#         const double *Z,
-#         const double *D,
-#         const int *Sp,
-#         const int *Sj,
-#               double *out,
-#         const int n_threads) nogil
-
-
-cdef extern from "src/cblas_ops.c":
-    int __op_dense_d "cblas_op_d"(
+cdef extern from "src/dense_ops.c":
+    int __op_dense_d "dense_op_d"(
         const int n_1,
         const int d_1,
         const double *X,
@@ -64,7 +38,7 @@ cdef extern from "src/cblas_ops.c":
         const int *Sp,
         const int *Sj,
               double *out) nogil
-    int __omp_dense_op_d "omp_cblas_op_d"(
+    int __omp_dense_op_d "omp_dense_op_d"(
         const int n_1,
         const int d_1,
         const double *X,
@@ -76,6 +50,32 @@ cdef extern from "src/cblas_ops.c":
         const int *Sj,
               double *out,
         const int n_threads) nogil
+
+
+# cdef extern from "src/cblas_ops.c":
+#     int __op_dense_d "cblas_op_d"(
+#         const int n_1,
+#         const int d_1,
+#         const double *X,
+#         const int n_2,
+#         const int k,
+#         const double *Z,
+#         const double *D,
+#         const int *Sp,
+#         const int *Sj,
+#               double *out) nogil
+#     int __omp_dense_op_d "omp_cblas_op_d"(
+#         const int n_1,
+#         const int d_1,
+#         const double *X,
+#         const int n_2,
+#         const int k,
+#         const double *Z,
+#         const double *D,
+#         const int *Sp,
+#         const int *Sj,
+#               double *out,
+#         const int n_threads) nogil
 
 
 cdef extern from "src/sparse_ops.c":
