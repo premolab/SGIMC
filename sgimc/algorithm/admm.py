@@ -10,17 +10,27 @@ from ..ops import shrink
 from .misc import f_fused
 
 
-def simple_cg(Ax, b, x, tol=1e-8):
+def simple_cg(Ax, b, x, tr_delta=0, rtol=1e-5, atol=1e-8):
     """Simple Conjugate gradient sovler."""
     # Simple Conjugate Gradient Method: the result overwrites `x`!
-    r = b - Ax(x)
-    p = r.copy()
+    # b - Ax(x) here is - \nabla f
+    r, rtr = b - Ax(x), 1.0
+    p = np.zeros_like(r)
 
-    rtr = np.dot(r, r)
-    if sqrt(rtr) < tol:
-        return 0
+    cg_tol_sq = np.dot(r, r) * rtol + atol
+    tr_delta_sq = tr_delta ** 2
 
     for n_iter in range(len(x)):
+        # ddot(&n, r, &inc, r, &inc);
+        rtr, rtr_old = np.dot(r, r), rtr
+        if rtr < cg_tol_sq:
+            break
+
+        # dscal(&n, &(rtr / rtr_old), p, &inc);
+        p *= rtr / rtr_old
+        # daxpy(&n, &one, r, &1, p, &1);
+        p += r
+
         Ap = Ax(p)
 
         # ddot(&n, p, &inc, Ap, &inc);
@@ -29,25 +39,32 @@ def simple_cg(Ax, b, x, tol=1e-8):
         x += alpha * p
         # daxpy(&n, &( -alpha ), Ap, &inc, r, &inc);
         r -= alpha * Ap
-        # dscal(&n, &(1 / rtr), p, &inc);
-        p /= rtr
 
-        # ddot(&n, r, &inc, r, &inc);
-        rtr = np.dot(r, r)
-        if sqrt(rtr) < tol:
+        # check trust region
+        if tr_delta_sq > 0:
+            xTx = np.dot(x, x)
+            if xTx > tr_delta_sq:
+                xTp = np.dot(x, p)
+                if(xTp > 0):
+                    # backtrack into the trust region
+                    p_nrm = np.linalg.norm(p)
+
+                    q = xTp / p_nrm
+                    eta = (q - sqrt(q * q + tr_delta_sq - xTx)) / p_nrm
+
+                    # reproject onto the boundary of the region
+                    r += eta * Ap
+                    x -= eta * p
+                else:
+                    # this never happens maybe due to CG iteration properties
+                    pass
             break
-
-        # dscal(&n, &rtr, p, &inc);
-        p *= rtr
-        # daxpy(&n, &one, r, &1, p, &1);
-        p += r
-
     # end for
 
     return n_iter
 
 
-def sub_0_cg(D, Obj, x0=None, eta=1e0, tol=1e-8):
+def sub_0_cg(D, Obj, x0=None, eta=1e0, tol=1e-3):
     """Solve the Sub_0 subproblem using CG."""
     if x0 is None:
         x0 = D
@@ -59,7 +76,7 @@ def sub_0_cg(D, Obj, x0=None, eta=1e0, tol=1e-8):
     def hess_v(p):
         return Obj.hess_v(p.reshape(D.shape)).reshape(-1) + p / eta
 
-    simple_cg(hess_v, b, x, tol=tol)
+    simple_cg(hess_v, b, x, rtol=tol, tr_delta=0.)
     # assert np.allclose(Ax(x), b)
 
     return x.reshape(D.shape)
@@ -110,7 +127,7 @@ def step(Obj, W0, C, eta, method="l-bfgs", sparse=True,
         # ADMM steps
         ZZ = sub_m(WW + LL, C_lasso, C_group, C_ridge, eta=eta)
         if method == "cg":
-            WW = sub_0_cg((ZZ - W0) - LL, Obj, eta=eta, tol=1e-8) + W0
+            WW = sub_0_cg((ZZ - W0) - LL, Obj, eta=eta, tol=rtol) + W0
 
         elif method == "l-bfgs":
             WW = sub_0_lbfgs(ZZ - LL, Obj, x0=WW_old, eta=eta, tol=1e-8)
