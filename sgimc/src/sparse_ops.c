@@ -23,26 +23,28 @@ int sparse_op_s(const int n_1,
     if(tmp == NULL)
         goto lbl_exit;
 
-    int i, j, l, t, tt;
+    int i, j, l, t;
     for(i = 0; i < n_1; ++i) {
-        // if(Sp[i] == Sp[i + 1])
-        //     continue;
-
         // get \tau_i = \sum_{j:i\in \Omega} S_{ij} e_j' Z
         memset(tmp, 0, k * sizeof(double));
         for(j = Sp[i]; j < Sp[i + 1]; ++j) {
             const double Sij = S[j];
-            for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                tmp[t] += Z[tt] * Sij;  // Z is n_2 x k fortran
-            // cblas_daxpy(k, S[j], &Z[Sj[j]], n_2, tmp, 1);
+            const double * const row = &Z[Sj[j] * k];
+            for(t = 0; t < k; ++t) {
+                tmp[t] += row[t] * Sij;  // Z is n_2 x k row-major
+            }
         }
+
+        // if(Sp[i] == Sp[i + 1])
+        //     continue;
 
         // multiply X'e_i \tau_i utilizing sparsity
         for(l = Xp[i]; l < Xp[i + 1]; ++l) {
             const double Xil = X[l];
-            for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
-                out[tt] += tmp[t] * Xil;  // out is d_1 x k fortran
-            // cblas_daxpy(k, X[l], tmp, 1, &out[Xj[l]], d_1);
+            double *row = &out[Xj[l] * k];  // `out` is d_1 x k row-major
+            for(t = 0; t < k; ++t) {
+                row[t] += tmp[t] * Xil;
+            }
         }
     }
 
@@ -76,21 +78,28 @@ int sparse_op_d(const int n_1,
     if(tmp == NULL)
         goto lbl_exit;
 
-    int i, j, l, t, tt;
+    int i, j, l, t;
     for(i = 0; i < n_1; ++i) {
+        // if(Sp[i] == Sp[i + 1])
+        //     continue;
+
         // compute e_i' XD
         memset(tmp, 0, sizeof(double) * k);
         for(l = Xp[i]; l < Xp[i+1]; ++l) {
             const double Xil = X[l];
-            for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
+            const double * const row = &D[Xj[l] * k];
+            for(t = 0; t < k; ++t) {
                 // compute sum_l e_i' X e_l e_l' D e_t
-                tmp[t] += Xil * D[tt];
+                tmp[t] += Xil * row[t];
+            }
         }
 
         // compute e_i' XD e_t e_t' Z' e_{Sj[j]}
-        for(j = Sp[i]; j < Sp[i+1]; ++j)
-            for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                out[j] += tmp[t] * Z[tt];
+        for(j = Sp[i]; j < Sp[i+1]; ++j) {
+            const double * const row = &Z[Sj[j] * k];
+            for(t = 0; t < k; ++t)
+                out[j] += tmp[t] * row[t];
+        }
     }
 
     errcode = 0;
@@ -127,42 +136,17 @@ int omp_sparse_op_s(const int n_1,
     const int n_effective_threads = get_max_threads(n_threads);
 
     // #pragma omp parallel for schedule(static) reduction(+:f)
-    int i, l, j, t, tt;
-
-    #if 0
-    #pragma omp parallel \
-                num_threads(n_effective_threads) \
-                private(i, l, j, t, tt)
-    {
-        // Notes: this is poorly parallelized
-        // Notes: vanilla row-col parallel doesn't work (race)
-        #pragma omp for schedule(static) nowait
-        for(t = 0; t < k; ++t) {
-            const double *Zt = &Z[t * n_2];  // Z is n_2 x k fortran
-            double *Bt = &out[t * d_1];      // `out` is d_1 x k fortran
-            for(i = 0; i < n_1; ++i) {
-                double tmp = 0;
-                for(j = Sp[i]; j < Sp[i + 1]; ++j)
-                    tmp += Zt[Sj[j]] * S[j];
-
-                for(l = Xp[i]; l < Xp[i + 1]; ++l)
-                    Bt[Xj[l]] += tmp * X[l];
-            }
-        }
-    }
-
-    errcode = 0;
-    #else
+    int i, l, j, t;
+    double *tmp;
 
     double * const *local = (double * const *) \
         alloc_local(n_effective_threads, k * d_1 * sizeof(double));
     if(local == NULL)
         goto lbl_exit;
 
-    double *tmp;
     #pragma omp parallel shared(local) \
                 num_threads(n_effective_threads) \
-                private(i, l, j, t, tt, tmp)
+                private(i, l, j, t, tmp)
     {
         tmp = (double *) malloc(k * sizeof(double));
         double * const buf = local[omp_get_thread_num()];
@@ -173,16 +157,17 @@ int omp_sparse_op_s(const int n_1,
             memset(tmp, 0, k * sizeof(double));
             for(j = Sp[i]; j < Sp[i + 1]; ++j) {
                 const double Sij = S[j];
-                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                    tmp[t] += Z[tt] * Sij;  // Z is n_2 x k fortran
+                const double * const row = &Z[Sj[j] * k];
+                for(t = 0; t < k; ++t)
+                    tmp[t] += row[t] * Sij;  // Z is n_2 x k row-major
             }
 
             // multiply X'e_i \tau utilizing sparsity
             for(l = Xp[i]; l < Xp[i + 1]; ++l) {
                 const double Xil = X[l];
-                double *row = &buf[Xj[l] * k];
+                double *row = &buf[Xj[l] * k];  // `buf` is d_1 x k row-major
                 for(t = 0; t < k; ++t) {
-                    row[t] += tmp[t] * Xil;  // `buf` is d_1 x k row-major
+                    row[t] += tmp[t] * Xil;
                 }
             }
         }
@@ -195,7 +180,7 @@ int omp_sparse_op_s(const int n_1,
         for(i = 0; i < d_1; ++i) {
             for(j = 0; j < k; ++j) {
                 for(l = 0; l < n_effective_threads; ++l) {
-                    out[i + j * d_1] += local[l][j + i * k];
+                    out[j + i * k] += local[l][j + i * k];  // out is d_1 x k row-major
                 }
             }
         }
@@ -205,7 +190,6 @@ int omp_sparse_op_s(const int n_1,
 
 lbl_exit: ;
     free_local((void**)local, n_effective_threads);
-    #endif
 
     return errcode;
 }
@@ -236,10 +220,10 @@ int omp_sparse_op_d(const int n_1,
     if(local == NULL)
         goto lbl_exit;
 
-    int i, l, t, tt, j;
+    int i, l, t, j;
     #pragma omp parallel shared(local) \
                 num_threads(n_effective_threads) \
-                private(i, l, t, tt, j)
+                private(i, l, t, j)
     {
         double * const tmp = local[omp_get_thread_num()];
 
@@ -249,15 +233,19 @@ int omp_sparse_op_d(const int n_1,
             memset(tmp, 0, sizeof(double) * k);
             for(l = Xp[i]; l < Xp[i+1]; ++l) {
                 const double Xil = X[l];
-                for(t = 0, tt = Xj[l]; t < k; ++t, tt+=d_1)
+                const double * const row = &D[Xj[l] * k];
+                for(t = 0; t < k; ++t) {
                     // compute sum_l e_i' X e_l e_l' D e_t
-                    tmp[t] += Xil * D[tt];
+                    tmp[t] += Xil * row[t];
+                }
             }
 
             // compute e_i' XD e_t e_t' Z' e_{Sj[j]}
-            for(j = Sp[i]; j < Sp[i+1]; ++j)
-                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                    out[j] += tmp[t] * Z[tt];
+            for(j = Sp[i]; j < Sp[i+1]; ++j) {
+                const double * const row = &Z[Sj[j] * k];
+                for(t = 0; t < k; ++t)
+                    out[j] += tmp[t] * row[t];
+            }
         }
     }
 

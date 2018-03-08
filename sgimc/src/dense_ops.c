@@ -1,6 +1,10 @@
 #include "common.h"
 #include "cblas.h"
 
+#ifndef DISABLE_OPENMP
+#include "threads.h"
+#endif
+
 
 int dense_op_s(const int n_1,
                const int d_1,
@@ -17,27 +21,33 @@ int dense_op_s(const int n_1,
     int errcode = -1;
 
     double *tmp = NULL;
-    tmp = (double *) malloc(sizeof(double) * max(d_1, k));
+    tmp = (double *) malloc(sizeof(double) * k);
     if(tmp == NULL)
         goto lbl_exit;
 
-    int i, j, l, ll, t, tt;
+    int i, j, l, t;
     for(i = 0; i < n_1; ++i) {
-        // if(Sp[i] == Sp[i + 1]) continue;
-
         // get \tau_i = \sum_{j:(i,j)\in \Omega} S_{ij} e_j' Z
         memset(tmp, 0, k * sizeof(double));
         for(j = Sp[i]; j < Sp[i + 1]; ++j) {
-            for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                tmp[t] += Z[tt] * S[j];  // Z is n_2 x k fortran
-            // cblas_daxpy(k, S[j], &Z[Sj[j]], n_2, tmp, 1);
+            const double Sij = S[j];
+            const double * const row = &Z[Sj[j] * k];
+            for(t = 0; t < k; ++t) {
+                tmp[t] += row[t] * Sij;  // Z is n_2 x k  row-major
+            }
         }
 
+        // if(Sp[i] == Sp[i + 1])
+        //     continue;
+
         // multiply X'e_i \tau_i
-        for(l = 0, ll=i; l < d_1; ++l, ll+=n_1) {
-            const double Xit = X[ll];
-            for(t = 0, tt = l; t < k; ++t, tt+=d_1)
-                out[tt] += tmp[t] * Xit;  // out is d_1 x k fortran
+        const double * const Xi = &X[i * d_1];
+        for(l = 0; l < d_1; ++l) {
+            const double Xil = Xi[l];  // `X` is n_1 x d_1 row-major
+            double *row = &out[l * k];  // `out` is d_1 x k row-major
+            for(t = 0; t < k; ++t) {
+                row[t] += tmp[t] * Xil;
+            }
         }
     }
 
@@ -69,21 +79,29 @@ int dense_op_d(const int n_1,
     if(tmp == NULL)
         goto lbl_exit;
 
-    int i, j, l, ll, t, tt;
+    int i, j, l, t;
     for(i = 0; i < n_1; ++i) {
+        const double * const Xi = &X[i * d_1];  // `X` is n_1 x d_1 row-major
+        // if(Sp[i] == Sp[i + 1])
+        //     continue;
+
         // compute e_i' XD
         memset(tmp, 0, sizeof(double) * k);
-        for(l = 0, ll=i; l < d_1; ++l, ll+=n_1) {
-            const double Xil = X[ll];
-            for(t = 0, tt = l; t < k; ++t, tt+=d_1)
+        for(l = 0; l < d_1; ++l) {
+            const double Xil = Xi[l];
+            const double * const row = &D[l * k];  // `D` is d_1 x k row-major
+            for(t = 0; t < k; ++t) {
                 // compute sum_l e_i' X e_l e_l' D e_t
-                tmp[t] += Xil * D[tt];
+                tmp[t] += Xil * row[t];
+            }
         }
 
         // compute e_i' XD e_t e_t' Z' e_{Sj[j]}
-        for(j = Sp[i]; j < Sp[i+1]; ++j)
-            for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                out[j] += tmp[t] * Z[tt];
+        for(j = Sp[i]; j < Sp[i+1]; ++j) {
+            const double * const row = &Z[Sj[j] * k];  // `Z` is n_2 x k row-major
+            for(t = 0; t < k; ++t)
+                out[j] += tmp[t] * row[t];
+        }
     }
 
     errcode = 0;
@@ -96,56 +114,6 @@ lbl_exit: ;
 
 
 #ifndef DISABLE_OPENMP
-#include "threads.h"
-
-
-#if 0
-int omp_dense_op_s(const int n_1,
-                   const int d_1,
-                   const double * const X,
-                   const int n_2,
-                   const int k,
-                   const double * const Z,
-                   const int * const Sp,
-                   const int * const Sj,
-                   const double * const S,
-                         double * out,
-                   const int n_threads)
-{
-    // compute entries of dense X' S Z
-    int errcode = -1;
-
-    // shared thread variables
-    const int n_effective_threads = get_max_threads(n_threads);
-
-    // #pragma omp parallel for schedule(static) reduction(+:f)
-    #pragma omp parallel num_threads(n_effective_threads)
-    {
-        // Notes: row-col parallel doesn't work (race)
-        #pragma omp for schedule(static) nowait
-        for(int t = 0; t < k; ++t) {
-            const double *row = &Z[t * n_2];  // Z is n_2 x k fortran
-            double *col = &out[t * d_1];  // out is d_1 x k fortran
-
-            for(int i = 0; i < n_1; ++i) {
-                // get \tau_{it} = \sum_{j:(i,j)\in \Omega} S_{ij} e_j' Z e_t
-                double tmp = 0;
-                for(int j = Sp[i]; j < Sp[i + 1]; ++j)
-                    tmp += row[Sj[j]] * S[j];  // Z is n_2 x k fortran
-
-                // compute out_{lt} = e_l' X e_i \tau_{it}
-                for(int l = 0, ll=i; l < d_1; ++l, ll+=n_1)
-                    col[l] += tmp * X[ll];
-            }
-        }
-    }
-
-    errcode = 0;
-
-    return errcode;
-}
-
-#else
 
 int omp_dense_op_s(const int n_1,
                    const int d_1,
@@ -166,7 +134,7 @@ int omp_dense_op_s(const int n_1,
     const int n_effective_threads = get_max_threads(n_threads);
 
     // #pragma omp parallel for schedule(static) reduction(+:f)
-    int i, l, ll, j, t, tt;
+    int i, l, j, t;
     double *tmp;
 
     double * const *local = (double * const *) \
@@ -176,7 +144,7 @@ int omp_dense_op_s(const int n_1,
 
     #pragma omp parallel shared(local) \
                 num_threads(n_effective_threads) \
-                private(i, l, ll, j, t, tt, tmp)
+                private(i, l, j, t, tmp)
     {
         double * const buf = local[omp_get_thread_num()];
         tmp = (double *) malloc(k * sizeof(double));
@@ -187,15 +155,19 @@ int omp_dense_op_s(const int n_1,
             memset(tmp, 0, k * sizeof(double));
             for(j = Sp[i]; j < Sp[i + 1]; ++j) {
                 const double Sij = S[j];
-                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                    tmp[t] += Z[tt] * Sij;  // Z is n_2 x k fortran
+                const double * const row = &Z[Sj[j] * k];
+                for(t = 0; t < k; ++t)
+                    tmp[t] += row[t] * Sij;  // Z is n_2 x k row-major
             }
 
             // multiply X'e_i \tau_i
-            for(l = 0, ll=i, tt=0; l < d_1; ++l, ll+=n_1, tt+=k) {
-                const double Xil = X[ll];
-                for(t = 0; t < k; ++t)
-                    buf[tt + t] += tmp[t] * Xil;  // buf is d_1 x k row-major
+            const double * const Xi = &X[i * d_1];
+            for(l = 0; l < d_1; ++l) {
+                const double Xil = Xi[l];
+                double *row = &buf[l * k];  // `buf` is d_1 x k row-major
+                for(t = 0; t < k; ++t) {
+                    row[t] += tmp[t] * Xil;
+                }
             }
         }
 
@@ -207,7 +179,7 @@ int omp_dense_op_s(const int n_1,
         for(i = 0; i < d_1; ++i) {
             for(j = 0; j < k; ++j) {
                 for(l = 0; l < n_effective_threads; ++l) {
-                    out[i + j * d_1] += local[l][j + i * k];  // out is d_1 x k fortran
+                    out[j + i * k] += local[l][j + i * k];  // out is d_1 x k row-major
                 }
             }
         }
@@ -219,8 +191,6 @@ lbl_exit: ;
 
     return errcode;
 }
-#endif
-
 
 int omp_dense_op_d(const int n_1,
                    const int d_1,
@@ -245,28 +215,36 @@ int omp_dense_op_d(const int n_1,
     if(local == NULL)
         goto lbl_exit;
 
-    int i, l, ll, t, tt, j;
+    int i, j, l, t;
     #pragma omp parallel shared(local) \
                 num_threads(n_effective_threads) \
-                private(i, l, ll, t, tt, j)
+                private(i, j, l, t)
     {
         double * const tmp = local[omp_get_thread_num()];
 
         #pragma omp for schedule(dynamic,50) nowait
         for(i = 0; i < n_1; ++i) {
+            const double * const Xi = &X[i * d_1];
+            // if(Sp[i] == Sp[i + 1])
+            //     continue;
+
             // compute e_i' XD
             memset(tmp, 0, sizeof(double) * k);
-            for(l = 0, ll=i; l < d_1; ++l, ll+=n_1) {
-                const double Xil = X[ll];
-                for(t = 0, tt = l; t < k; ++t, tt+=d_1)
+            for(l = 0; l < d_1; ++l) {
+                const double Xil = Xi[l];
+                const double * const row = &D[l * k];
+                for(t = 0; t < k; ++t) {
                     // compute sum_l e_i' X e_l e_l' D e_t
-                    tmp[t] += Xil * D[tt];
+                    tmp[t] += Xil * row[t];
+                }
             }
 
             // compute e_i' XD e_t e_t' Z' e_{Sj[j]}
-            for(j = Sp[i]; j < Sp[i+1]; ++j)
-                for(t = 0, tt = Sj[j]; t < k; ++t, tt+=n_2)
-                    out[j] += tmp[t] * Z[tt];
+            for(j = Sp[i]; j < Sp[i+1]; ++j) {
+                const double * const row = &Z[Sj[j] * k];
+                for(t = 0; t < k; ++t)
+                    out[j] += tmp[t] * row[t];
+            }
         }
     }
 
@@ -277,6 +255,5 @@ lbl_exit: ;
 
     return errcode;
 }
-
 
 #endif

@@ -7,6 +7,18 @@ from scipy.sparse import csr_matrix, isspmatrix
 from sklearn.utils.extmath import safe_sparse_dot
 
 
+def op_s_ref(R, X, Z, S, n_threads=None):
+    U = csr_matrix(R, copy=False)
+    U.data = S
+    return safe_sparse_dot(safe_sparse_dot(X.T, U), Z)
+
+
+def op_d_ref(R, X, Z, D, n_threads=None):
+    # ii, jj = R.nonzero()
+    # return np.multiply(safe_sparse_dot(X[ii, :], D), Z[jj, :]).sum(axis=1)
+    return safe_sparse_dot(safe_sparse_dot(X, D), Z.T)[R.nonzero()]
+
+
 class QuadraticApproximation(object):
     r"""The base class for quadratic approximation for the IMC objective.
 
@@ -23,8 +35,9 @@ class QuadraticApproximation(object):
         self.n_threads, self.approx_type = n_threads, approx_type.lower()
         assert self.approx_type in ("const", "linear", "quadratic")
 
-        self.X = csr_matrix(X) if isspmatrix(X) else np.asfortranarray(X)
-        self.YH = np.asfortranarray(safe_sparse_dot(Y, H, dense_output=True))
+        self.X = csr_matrix(X) if isspmatrix(X) else np.ascontiguousarray(X)
+        self.YH = np.ascontiguousarray(
+            safe_sparse_dot(Y, H, dense_output=True))
 
         self.R = R.tocsr()
 
@@ -32,11 +45,19 @@ class QuadraticApproximation(object):
 
     def update(self, W):
         """Update the approximation w.r.t. W."""
+        return self.forward(W).backward()
+
+    def forward(self, W):
+        """Forward-update the approximation w.r.t. W."""
         self.p_val = op_d(self.R, self.X, self.YH,
-                          np.asfortranarray(W), self.n_threads)
+                          np.ascontiguousarray(W), self.n_threads)
 
         self.v_val = self.v_func(self.p_val, self.R.data)
 
+        return self
+
+    def backward(self):
+        """Precompute gradient and hessian statistics."""
         if self.approx_type in ("linear", "quadratic"):
             self.g_val = self.g_func(self.p_val, self.R.data)
 
@@ -46,18 +67,17 @@ class QuadraticApproximation(object):
         return self
 
     def value(self):
-        """The value of the objective at the origin of the approximation."""
+        """The current value of the objective."""
         return self.v_val.sum()
 
-    def grad(self):
+    def grad(self, out=None):
         """Return the gradient."""
         if self.approx_type not in ("linear", "quadratic"):
             raise RuntimeError(
                 """Gradient requested with `approx_type = "%s"`.""" % (
                     self.approx_type,))
 
-        return op_s(self.R, self.X, self.YH,
-                    self.g_val, self.n_threads).copy("C")
+        return op_s(self.R, self.X, self.YH, self.g_val, self.n_threads)
 
     def hess_v(self, D):
         """Get the hessian-vector product."""
@@ -66,12 +86,12 @@ class QuadraticApproximation(object):
                 """Hessian-vector requested with `approx_type = "%s"`.""" % (
                     self.approx_type,))
 
-        c_val = op_d(self.R, self.X, self.YH,
-                     np.asfortranarray(D), self.n_threads)
+        D = D if D.flags.c_contiguous else np.ascontiguousarray(D)
+
+        c_val = op_d(self.R, self.X, self.YH, D, self.n_threads)
         c_val *= self.h_val
 
-        return op_s(self.R, self.X, self.YH,
-                    c_val, self.n_threads).copy("C")
+        return op_s(self.R, self.X, self.YH, c_val, self.n_threads)
 
     @staticmethod
     def v_func(predict, target):

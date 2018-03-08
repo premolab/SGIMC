@@ -34,7 +34,7 @@ def has_omp():
     return __has_omp() > 0
 
 
-def op_d(object R, object X, double[::1, :] Z, double[::1, :] D, int n_threads=1):
+def op_d(object R, object X, double[:, ::1] Z, double[:, ::1] D, int n_threads=1):
     """Compute the `op_d` operation returning data for a sparse matrix.
 
     The function maps a dense `D` to a flat array of data for a CSR sparse
@@ -45,13 +45,13 @@ def op_d(object R, object X, double[::1, :] Z, double[::1, :] D, int n_threads=1
     R : CSR sparse matrix, shape = [n_1, n_2]
         Determines the sprasity structure to compute the results for.
 
-    X : CSR sparse or dense matrix, shape = [n_1, d_1], order="F"
+    X : CSR sparse or dense matrix, shape = [n_1, d_1], order="C"
         The left matrix in the result.
 
-    Z : dense matrix, shape = [n_2, k], order = "F"
+    Z : dense matrix, shape = [n_2, k], order="C"
         The right matrix in the result.
 
-    D : dense matrix, shape = [d_1, k], order = "F"
+    D : dense matrix, shape = [d_1, k], order="C"
         The matrix to compute the result for.
 
     n_threads : int, default 1
@@ -86,7 +86,7 @@ def op_d(object R, object X, double[::1, :] Z, double[::1, :] D, int n_threads=1
     return S.base
 
 
-def op_s(object R, object X, double[::1, :] Z, double[::1] S, int n_threads=1):
+def op_s(object R, object X, double[:, ::1] Z, double[::1] S, int n_threads=1):
     """Compute the `op_s` operation returning dense matrix.
 
     The function takes a flat array of data for a CSR sparse matrix `S` with
@@ -97,10 +97,10 @@ def op_s(object R, object X, double[::1, :] Z, double[::1] S, int n_threads=1):
     R : CSR sparse matrix, shape = [n_1, n_2]
         Determines the sprasity structure to compute the results for.
 
-    X : CSR sparse or dense matrix, shape = [n_1, d_1], order="F"
+    X : CSR sparse or dense matrix, shape = [n_1, d_1], order="C"
         The left matrix in the result.
 
-    Z : dense matrix, shape = [n_2, k], order = "F"
+    Z : dense matrix, shape = [n_2, k], order="C"
         The right matrix in the result.
 
     S : 1-D array
@@ -112,14 +112,14 @@ def op_s(object R, object X, double[::1, :] Z, double[::1] S, int n_threads=1):
 
     Returns
     -------
-    D : dense matrix, shape = [d_1, k], order = "F"
+    D : dense matrix, shape = [d_1, k], order="C"
         The resulting dense matrix.
     """
     if not isinstance(R, csr_matrix):
         raise TypeError("""`R` must be CSR matrix.""")
 
     cdef int d_1 = X.shape[1], k = Z.shape[1]
-    cdef double[::1, :] D = np.zeros((d_1, k), dtype="double", order="F")
+    cdef double[:, ::1] D = np.zeros((d_1, k), dtype="double", order="C")
     cdef int errcode = -1
 
     if not has_omp():
@@ -149,10 +149,10 @@ def diag_op_d(object R, double[::1, :] X, double[::1, :] Z, double[::1] D):
     R : CSR sparse matrix, shape = [n_1, n_2]
         Determines the sprasity structure to compute the results for.
 
-    X : dense matrix, shape = [n_1, k], order = "F"
+    X : dense matrix, shape = [n_1, k], order="F"
         The left matrix in the result.
 
-    Z : dense matrix, shape = [n_2, k], order = "F"
+    Z : dense matrix, shape = [n_2, k], order="F"
         The right matrix in the result.
 
     D : 1-D array
@@ -204,10 +204,10 @@ def diag_op_s(object R, double[::1, :] X, double[::1, :] Z, double[::1] S):
     R : CSR sparse matrix, shape = [n_1, n_2]
         Determines the sprasity structure to compute the results for.
 
-    X : dense matrix, shape = [n_1, k], order = "F"
+    X : dense matrix, shape = [n_1, k], order="F"
         The left matrix in the result.
 
-    Z : dense matrix, shape = [n_2, k], order = "F"
+    Z : dense matrix, shape = [n_2, k], order="F"
         The right matrix in the result.
 
     S : 1-D array
@@ -313,14 +313,14 @@ def shrink(double[:, ::1] D, double C_lasso, double C_group, double C_ridge):
         The matrix after applying L2 group-sparse shrinkage.
     """
     # shapes
-    cdef int d_1 = D.shape[0], k = D.shape[1]
+    cdef int d_1 = D.shape[0], k = D.shape[1], one = 1
 
     # counters and temporary variables
     cdef int i, j
     cdef double shrinkage, nrm, tmp
 
     # output
-    cdef double[::1, :] out = np.empty_like(D, order="F")
+    cdef double[:, ::1] out = np.empty_like(D)
 
     with nogil:
         # Lasso shrinkage
@@ -338,7 +338,8 @@ def shrink(double[:, ::1] D, double C_lasso, double C_group, double C_ridge):
         if C_group > 0:
             for i in range(d_1):
                 # group shrinkage
-                nrm = dnrm2(&k, &out[i, 0], &d_1)  # norm2(k, &out[i, 0], d_1)
+                # nrm = dnrm2(&k, &out[i, 0], &d_1)  # norm2(k, &out[i, 0], d_1)
+                nrm = dnrm2(&k, &out[i, 0], &one)  # norm2(k, &out[i, 0], d_1)
                 if nrm <= C_group:
                     for j in range(k):
                         out[i, j] = 0.
@@ -435,11 +436,11 @@ def shrink_row(double[::1] D, double C_lasso, double C_group, double C_ridge):
 
 
 def _dense_op_d(object R,
-                     double[::1, :] X,
-                     double[::1, :] Z,
-                     double[::1, :] D,
-                     double[::1] S,
-                     int n_threads=1):
+                double[:, ::1] X,
+                double[:, ::1] Z,
+                double[:, ::1] D,
+                double[::1] S,
+                int n_threads=1):
     cdef int errcode = -1
     cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
     cdef int d_1 = X.shape[1], k = Z.shape[1]
@@ -464,11 +465,11 @@ def _dense_op_d(object R,
 
 
 def _sparse_op_d(object R,
-                      object X,
-                      double[::1, :] Z,
-                      double[::1, :] D,
-                      double[::1] S,
-                      int n_threads=1):
+                 object X,
+                 double[:, ::1] Z,
+                 double[:, ::1] D,
+                 double[::1] S,
+                 int n_threads=1):
     cdef int errcode = -1
     cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
     cdef int d_1 = X.shape[1], k = Z.shape[1]
@@ -494,11 +495,11 @@ def _sparse_op_d(object R,
 
 
 def _dense_op_s(object R,
-                     double[::1, :] X,
-                     double[::1, :] Z,
-                     double[::1] S,
-                     double[::1, :] D,
-                     int n_threads=1):
+                double[:, ::1] X,
+                double[:, ::1] Z,
+                double[::1] S,
+                double[:, ::1] D,
+                int n_threads=1):
     cdef int errcode = -1
     cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
     cdef int d_1 = X.shape[1], k = Z.shape[1]
@@ -522,11 +523,11 @@ def _dense_op_s(object R,
 
 
 def _sparse_op_s(object R,
-                      object X,
-                      double[::1, :] Z,
-                      double[::1] S,
-                      double[::1, :] D,
-                      int n_threads=1):
+                 object X,
+                 double[:, ::1] Z,
+                 double[::1] S,
+                 double[:, ::1] D,
+                 int n_threads=1):
     cdef int errcode = -1
     cdef int n_1 = X.shape[0], n_2 = Z.shape[0]
     cdef int d_1 = X.shape[1], k = Z.shape[1]
