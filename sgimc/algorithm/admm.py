@@ -10,20 +10,29 @@ from ..ops import shrink
 from .misc import f_fused
 
 
-def simple_cg(Ax, b, x, tr_delta=0, rtol=1e-5, atol=1e-8):
+def simple_cg(Ax, b, x, rtol=1e-5, atol=1e-8, args=()):
     """Simple Conjugate gradient sovler."""
     # Simple Conjugate Gradient Method: the result overwrites `x`!
     # b - Ax(x) here is - \nabla f
-    r, rtr = b - Ax(x), 1.0
-    p = np.zeros_like(r)
+    return trcg(Ax, b - Ax(x), x, tr_delta=0, rtol=rtol, atol=atol, args=args)
 
-    cg_tol_sq = np.dot(r, r) * rtol + atol
+
+def trcg(Ax, r, x, tr_delta=0, rtol=1e-5, atol=1e-8, args=()):
+    """Simple Conjugate gradient sovler with trust region control.
+
+    For the given `x` and `r` solves `r = A(z - x)` and on termination
+    updates `r` and `x` inplace with the final residual and solution `z`,
+    respectively.
+    """
+
+    p, rtr = np.zeros_like(r), 1.0
+    cg_tol = np.linalg.norm(r) * rtol + atol
     tr_delta_sq = tr_delta ** 2
 
     for n_iter in range(len(x)):
         # ddot(&n, r, &inc, r, &inc);
         rtr, rtr_old = np.dot(r, r), rtr
-        if rtr < cg_tol_sq:
+        if sqrt(rtr) < cg_tol:
             break
 
         # dscal(&n, &(rtr / rtr_old), p, &inc);
@@ -31,7 +40,7 @@ def simple_cg(Ax, b, x, tr_delta=0, rtol=1e-5, atol=1e-8):
         # daxpy(&n, &one, r, &1, p, &1);
         p += r
 
-        Ap = Ax(p)
+        Ap = Ax(p, *args)
 
         # ddot(&n, p, &inc, Ap, &inc);
         alpha = rtr / np.dot(p, Ap)
@@ -50,7 +59,7 @@ def simple_cg(Ax, b, x, tr_delta=0, rtol=1e-5, atol=1e-8):
                     p_nrm = np.linalg.norm(p)
 
                     q = xTp / p_nrm
-                    eta = (q - sqrt(q * q + tr_delta_sq - xTx)) / p_nrm
+                    eta = (q - sqrt(max(q * q + tr_delta_sq - xTx, 0))) / p_nrm
 
                     # reproject onto the boundary of the region
                     r += eta * Ap
@@ -58,39 +67,38 @@ def simple_cg(Ax, b, x, tr_delta=0, rtol=1e-5, atol=1e-8):
                 else:
                     # this never happens maybe due to CG iteration properties
                     pass
-            break
+                break
+            # end if
+        # end if
     # end for
 
     return n_iter
 
 
-def sub_0_cg(D, Obj, x0=None, eta=1e0, tol=1e-3):
-    """Solve the Sub_0 subproblem using CG."""
-    if x0 is None:
-        x0 = D
+def sub_0_cg(D, Obj, W0, eta=1e0, rtol=1e-3, atol=1e-5, update=False):
+    if update:
+        Obj.update(W0)
 
-    # set up the CG arguments
-    x = x0.reshape(-1).copy()
-    b = x / eta - Obj.grad().reshape(-1)
+    grad = (Obj.grad() + (W0 - D) / eta).reshape(-1)
+    def f_hessp(s, Obj, W, eta):
+        return Obj.hess_v(s.reshape(W.shape)).reshape(-1) + s / eta
 
-    def hess_v(p):
-        return Obj.hess_v(p.reshape(D.shape)).reshape(-1) + p / eta
+    r, delta = -grad, np.zeros_like(W0.reshape(-1))
+    trcg(f_hessp, r, delta, rtol=rtol, atol=atol,
+         tr_delta=0, args=(Obj, W0, eta))
 
-    simple_cg(hess_v, b, x, rtol=tol, tr_delta=0.)
-    # assert np.allclose(Ax(x), b)
-
-    return x.reshape(D.shape)
+    return W0 + delta.reshape(W0.shape)
 
 
-def sub_0_lbfgs(D, Obj, x0=None, eta=1e0, tol=1e-8):
+def sub_0_lbfgs(D, Obj, W0=None, eta=1e0, tol=1e-8):
     """Solve the Sub_0 subproblem using L-BFGS."""
-    if x0 is None:
-        x0 = D
+    if W0 is None:
+        W0 = D
 
     # Run the L-BFGS
     W_star, F_star, info = fmin_l_bfgs_b(
-        f_fused, x0.reshape(-1), fprime=None,
-        # f_value, x0.reshape(-1), f_prime,
+        f_fused, W0.reshape(-1), fprime=None,
+        # f_value, W0.reshape(-1), f_prime,
         args=(Obj, D, eta), approx_grad=False,
         pgtol=tol, iprint=0)
 
@@ -127,10 +135,10 @@ def step(Obj, W0, C, eta, method="l-bfgs", sparse=True,
         # ADMM steps
         ZZ = sub_m(WW + LL, C_lasso, C_group, C_ridge, eta=eta)
         if method == "cg":
-            WW = sub_0_cg((ZZ - W0) - LL, Obj, eta=eta, tol=rtol) + W0
+            WW = sub_0_cg(ZZ - LL, Obj, W0=W0, eta=eta)
 
         elif method == "l-bfgs":
-            WW = sub_0_lbfgs(ZZ - LL, Obj, x0=WW_old, eta=eta, tol=1e-8)
+            WW = sub_0_lbfgs(ZZ - LL, Obj, W0=WW_old, eta=eta, tol=1e-8)
 
         # end if
 
