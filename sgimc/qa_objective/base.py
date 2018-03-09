@@ -27,13 +27,25 @@ class QuadraticApproximation(object):
         F(W, H) = \sum_{i,j\in \Omega}
     """
 
-    def __init__(self, X, W, Y, H, R, n_threads=1, approx_type="quadratic"):
+    def __init__(self, X, W, Y, H, R, sample_weight=None,
+                 n_threads=1, approx_type="quadratic"):
         """Initialize the approximation of an IMC objective w.r.t. W."""
 
-        assert isinstance(R, csr_matrix), """`R` must be a CSR matrix."""
+        assert isspmatrix(R), """`R` must be a sparse matrix."""
 
         self.n_threads, self.approx_type = n_threads, approx_type.lower()
         assert self.approx_type in ("const", "linear", "quadratic")
+
+        if sample_weight is not None:
+            if isspmatrix(sample_weight):
+                sample_weight = sample_weight.tocsr().data
+
+            sample_weight = np.ravel(sample_weight)
+            assert len(sample_weight) == R.nnz, \
+                """`sample_weight` must have as many elements """ \
+                """as are nonzero in R."""
+
+        self.sample_weight = sample_weight
 
         self.X = csr_matrix(X) if isspmatrix(X) else np.ascontiguousarray(X)
         self.YH = np.ascontiguousarray(
@@ -53,6 +65,8 @@ class QuadraticApproximation(object):
                           np.ascontiguousarray(W), self.n_threads)
 
         self.v_val = self.v_func(self.p_val, self.R.data)
+        if self.sample_weight is not None:
+            self.v_val *= self.sample_weight
 
         return self
 
@@ -60,9 +74,13 @@ class QuadraticApproximation(object):
         """Precompute gradient and hessian statistics."""
         if self.approx_type in ("linear", "quadratic"):
             self.g_val = self.g_func(self.p_val, self.R.data)
+            if self.sample_weight is not None:
+                self.g_val *= self.sample_weight
 
             if self.approx_type == "quadratic":
                 self.h_val = self.h_func(self.p_val, self.R.data)
+                if self.sample_weight is not None:
+                    self.h_val *= self.sample_weight
 
         return self
 
@@ -86,9 +104,8 @@ class QuadraticApproximation(object):
                 """Hessian-vector requested with `approx_type = "%s"`.""" % (
                     self.approx_type,))
 
-        D = D if D.flags.c_contiguous else np.ascontiguousarray(D)
-
-        c_val = op_d(self.R, self.X, self.YH, D, self.n_threads)
+        c_val = op_d(self.R, self.X, self.YH,
+                     np.ascontiguousarray(D), self.n_threads)
         c_val *= self.h_val
 
         return op_s(self.R, self.X, self.YH, c_val, self.n_threads)

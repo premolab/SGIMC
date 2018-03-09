@@ -11,18 +11,21 @@ from sklearn.utils.extmath import safe_sparse_dot
 class IMCProblem(object):
     """A container for the IMC problem."""
 
-    def __init__(self, objective, X, Y, R, n_threads=4):
+    def __init__(self, objective, X, Y, R, sample_weight=None, n_threads=4):
         """A container for the IMC problem."""
         self._X, self._Y, self._R = X, Y, R.tocsr()
         self._objective = objective
+
+        self.sample_weight = sample_weight
 
         self.n_threads = n_threads
 
     def objective(self, W, H, approx_type="quadratic"):
         """Get the approximation of the objective for the current problem."""
-        return self._objective(self._X, W, self._Y, H, self._R,
-                               approx_type=approx_type,
-                               n_threads=self.n_threads)
+        return self._objective(
+            X=self._X, W=W, Y=self._Y, H=H, R=self._R,
+            approx_type=approx_type, sample_weight=self.sample_weight,
+            n_threads=self.n_threads)
 
     def value(self, W, H):
         """Return the value of the current problem."""
@@ -47,9 +50,9 @@ class IMCProblem(object):
         """Create an instance of the transposed problem."""
         if not hasattr(self, "_transpose"):
             # create an instance of the transposed problem
-            self._transpose = IMCProblem(self._objective,
-                                         self._Y, self._X, self._R.T,
-                                         self.n_threads)
+            self._transpose = IMCProblem(
+                objective=self._objective, X=self._Y, Y=self._X, R=self._R.T,
+                sample_weight=self.sample_weight, n_threads=self.n_threads)
 
             # back reference to self
             self._transpose._transpose = self

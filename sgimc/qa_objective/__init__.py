@@ -11,12 +11,12 @@ class QAObjectiveL2Loss(QuadraticApproximation):
     """Quadratic Approximation for the L2 loss."""
 
     def __init__(self, X, W, Y, H, R,
-                 n_threads=1, approx_type="quadratic"):
+                 sample_weight=None, n_threads=1,
+                 approx_type="quadratic"):
         """Build the Quadratic approximation."""
         super(QAObjectiveL2Loss, self).__init__(
-            X, W, Y, H, R,
-            n_threads=n_threads,
-            approx_type=approx_type)
+            X, W, Y, H, R, sample_weight=sample_weight,
+            n_threads=n_threads, approx_type=approx_type)
 
     @staticmethod
     def v_func(predict, target):
@@ -43,12 +43,12 @@ class QAObjectiveHuberLoss(QAObjectiveL2Loss):
     """Quadratic Approximation for the Huber loss."""
 
     def __init__(self, X, W, Y, H, R, epsilon=1e-2,
-                 n_threads=1, approx_type="quadratic"):
+                 sample_weight=None, n_threads=1,
+                 approx_type="quadratic"):
         """Build the Quadratic approximation."""
         super(QAObjectiveHuberLoss, self).__init__(
-            X, W, Y, H, R,
-            n_threads=n_threads,
-            approx_type=approx_type)
+            X, W, Y, H, R, sample_weight=sample_weight,
+            n_threads=n_threads, approx_type=approx_type)
 
         self.epsilon = epsilon
 
@@ -81,12 +81,12 @@ class QAObjectiveLogLoss(QuadraticApproximation):
     """Quadratic Approximation for the Logistic loss."""
 
     def __init__(self, X, W, Y, H, R,
-                 n_threads=1, approx_type="quadratic"):
+                 sample_weight=None, n_threads=1,
+                 approx_type="quadratic"):
         """Build the Quadratic approximation."""
         super(QAObjectiveLogLoss, self).__init__(
-            X, W, Y, H, R,
-            n_threads=n_threads,
-            approx_type=approx_type)
+            X, W, Y, H, R, sample_weight=sample_weight,
+            n_threads=n_threads, approx_type=approx_type)
 
     @staticmethod
     def v_func(logit, target):
