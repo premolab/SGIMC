@@ -111,7 +111,7 @@ def norm(r, mask=None):
 
 def relative_loss(r, r_hat, mask=None):
     a = norm((r - r_hat), mask=mask)
-    b = norm(r, mask)
+    b = norm(r, mask=mask)
     return a/b
 
 
