@@ -9,8 +9,8 @@ from sklearn.utils import check_random_state
 from . import IMCProblem
 
 
-def make_imc_data(n_1, d_1, n_2, d_2, k, scale=0.05, noise=0,
-                  random_state=None, binarize=False):
+def make_imc_data(n_1, d_1, n_2, d_2, k, scale=0.05, noise=0, random_state=None,
+                  binarize=False, return_noisy_only=True):
     """Create a very simple IMC problem.
 
     TODO: should probably utilize sklearn's make_regresssion.
@@ -30,14 +30,19 @@ def make_imc_data(n_1, d_1, n_2, d_2, k, scale=0.05, noise=0,
     W, H = np.eye(d_1, k), np.eye(d_2, k)
 
     R = np.dot(np.dot(X, W), np.dot(Y, H).T)
+    R_noise = R.copy()
     if noise > 0:
-        R += random_state.normal(scale=noise, size=(n_1, n_2))
+        R_noise += random_state.normal(scale=noise, size=(n_1, n_2))
 
     if binarize:
         # We use $\pm 1$ labels in the classification problem.
         R = np.where(R >= 0, 1., -1.)
+        R_noise = np.where(R_noise >= 0, 1., -1.)
 
-    return X, W, Y, H, R
+    if return_noisy_only:
+        return X, W, Y, H, R_noise
+    else:
+        return X, W, Y, H, R_noise, R
 
 
 def sparsify(R, sparsity=0.10, random_state=None):
@@ -49,6 +54,14 @@ def sparsify(R, sparsity=0.10, random_state=None):
                        shape=R.shape, dtype=np.float)
 
     return R_coo.tocsr(), mask
+
+
+def sparsify_with_mask(R, mask):
+    """Sparcify the given matrix with the mask."""
+    R_coo = coo_matrix((R[mask], np.nonzero(mask)),
+                       shape=R.shape, dtype=np.float)
+
+    return R_coo.tocsr()
 
 
 def performance(problem, W, H, C, R_full):
