@@ -5,6 +5,9 @@ import gzip
 import pickle
 import signal
 
+import numpy as np
+from sklearn.utils.extmath import safe_sparse_dot
+
 
 class DelayedKeyboardInterrupt(object):
     """An uninterruptible critical section.
@@ -98,3 +101,32 @@ def load(filename):
         obj = pickle.load(f)
 
     return obj
+
+# =============================== Functions to calculate loss ===============================
+
+def norm(r, mask=None):
+    if mask is None: return np.sum(r**2)
+    else: return np.sum(r[mask]**2)
+    
+
+def relative_loss(r, r_hat, mask=None):
+    a = norm((r - r_hat), mask=mask)
+    b = norm(r, mask)
+    return a/b
+
+
+def calculate_loss(R, X, W_stack, H_stack, Y, mask=None):
+    """Calculates loss specified in 'norm' fucntion between R and R_hat,
+    given by the model R_hat = X W H' Y'. Mask provides element wise loss."""
+    w, h = W_stack[...,-1], H_stack[...,-1]
+    r_hat = safe_sparse_dot(safe_sparse_dot(X, w), safe_sparse_dot(Y, h).T, dense_output=True)
+    l = relative_loss(R, r_hat, mask=mask)
+    return l
+
+
+def invert(mask1):
+    """Inverts the given boolean mask."""
+    assert not mask1 is None
+    mask1 = np.asarray(mask1, dtype='int8')
+    mask2 = np.array(mask1 - 1, dtype='bool')
+    return mask2
