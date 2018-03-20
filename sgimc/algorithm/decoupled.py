@@ -9,7 +9,7 @@ from scipy.optimize import line_search
 
 from ..ops import shrink_row
 
-from .misc import f_value, f_prime
+from .misc import f_valp, f_grad
 
 
 def step(Obj, W0, C, eta, rtol=1e-5, atol=1e-8):
@@ -34,10 +34,10 @@ def step(Obj, W0, C, eta, rtol=1e-5, atol=1e-8):
 
     return W_new
 
-    pk = W_new - W0
+    # pk = W_new - W0
 
-    alpha = line_search(f_value, f_prime, args=(Obj, W0, eta),
-                        xk=W0.reshape(-1), pk=pk.reshape(-1),
-                        gfk=Gt.reshape(-1))[0] or 1e-2
+    # alpha = line_search(f_valp, f_grad, args=(Obj, W0, eta),
+    #                     xk=W0.reshape(-1), pk=pk.reshape(-1),
+    #                     gfk=Gt.reshape(-1))[0] or 1e-2
 
-    return W0 + alpha * pk
+    # return W0 + alpha * pk
