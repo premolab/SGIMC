@@ -3,7 +3,8 @@ from math import sqrt
 import numpy as np
 
 
-def trcg(Ax, r, x, tr_delta=0, rtol=1e-5, atol=1e-8, args=()):
+def trcg(Ax, r, x, tr_delta=0, rtol=1e-5, atol=1e-8, args=(),
+         verbose=False):
     """Simple Conjugate gradient sovler with trust region control.
 
     For the given `x` and `r` solves `r = A(z - x)` and on termination
@@ -18,6 +19,12 @@ def trcg(Ax, r, x, tr_delta=0, rtol=1e-5, atol=1e-8, args=()):
     while iteration < len(x) and sqrt(rtr) > cg_tol:
         Ap = Ax(p, *args)
         iteration += 1
+
+        if verbose:
+            print("""iter %2d |Ap| %5.3e |p| %5.3e |r| %5.3e |x| %5.3e """
+                  """beta %5.3e""" %
+                  (iteration, np.linalg.norm(Ap), np.linalg.norm(p),
+                   np.linalg.norm(r), np.linalg.norm(x), rtr / rtr_old))
 
         # ddot(&n, p, &inc, Ap, &inc);
         alpha = rtr / np.dot(p, Ap)
@@ -75,10 +82,10 @@ def tron(func, x, n_iterations=100, rtol=1e-3, atol=1e-5, args=(),
     grad_norm = np.linalg.norm(grad)
 
     # make a copy of `-grad` and zeros like `W0`
-    r, z = -grad, np.zeros_like(x)
+    # r, z = -grad, np.zeros_like(x)
     delta, grad_norm_tol = grad_norm, grad_norm * rtol + atol
     while iteration < n_iterations and grad_norm > grad_norm_tol:
-        # r, z = -grad, np.zeros_like(x)
+        r, z = -grad, np.zeros_like(x)
         cg_iter += trcg(f_hess_, r, z, tr_delta=delta, args=args, rtol=1e-2)
 
         z_norm = np.linalg.norm(z)
@@ -112,9 +119,9 @@ def tron(func, x, n_iterations=100, rtol=1e-3, atol=1e-5, args=(),
 
         if verbose:
             print("""iter %2d act %5.3e pre %5.3e delta %5.3e f """
-                  """%5.3e |g| %5.3e CG %3d""" % (
-                    iteration, actualred, approxred,
-                    delta, fval, grad_norm, cg_iter))
+                  """%5.3e |g| %5.3e CG %3d""" %
+                  (iteration, actualred, approxred,
+                   delta, fval, grad_norm, cg_iter))
 
         if actualred > eta0 * approxred:
             x += z
@@ -122,7 +129,7 @@ def tron(func, x, n_iterations=100, rtol=1e-3, atol=1e-5, args=(),
             grad_norm = np.linalg.norm(grad)
             iteration += 1
 
-            r, z = -grad, np.zeros_like(x)
+            # r, z = -grad, np.zeros_like(x)
         # end if
 
         if verbose:
