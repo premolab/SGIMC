@@ -17,7 +17,7 @@ from sgimc.algorithm.decoupled import step as decoupled_step
 def step_qaadmm(problem, W, H, C, eta, method="l-bfgs", sparse=True,
                 n_iterations=50, rtol=1e-5, atol=1e-8):
 
-    approx_type = "quadratic" if method in ("cg",) else "linear"
+    approx_type = "quadratic" if method in ("cg", "tron") else "linear"
     Obj = problem.objective(W, H, approx_type=approx_type)
 
     return admm_step(Obj, W, C, eta, sparse=sparse, method=method,

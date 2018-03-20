@@ -9,7 +9,7 @@ from .misc import f_valp, f_grad, f_hess, f_fused
 from ..ops import shrink
 
 
-def sub_0_lbfgs(D, Obj, W0, eta=1e0, C=1.0, tol=1e-8):
+def sub_0_lbfgs(D, Obj, W0, eta=1e0, C=1.0, tol=1e-3):
     """Solve the Sub_0 subproblem using L-BFGS."""
     W, F_star, info = fmin_l_bfgs_b(
         f_fused, W0.reshape(-1), fprime=None,
@@ -25,8 +25,8 @@ def sub_0_cg(D, Obj, W0, eta=1e0, C=1.0, rtol=1e-3, atol=1e-5):
 
     Obj.forward(W0)
     r, delta = -f_grad(W0, *args), np.zeros_like(W0)
-    trcg(f_hess, r, delta.reshape(-1), args=args,
-         rtol=rtol, atol=atol, tr_delta=0)
+    trcg(f_hess, r, delta.reshape(-1), tr_delta=0, args=args,
+         rtol=rtol, atol=atol)
 
     return W0 + delta
 
@@ -70,12 +70,10 @@ def step(Obj, W0, C, eta, method="l-bfgs", sparse=True,
 
         # ADMM prox step for the loss
         if method == "cg":
-            WW = sub_0_cg(ZZ - LL, Obj, W0=WW_old,
-                          C=C_ridge, eta=eta)
+            WW = sub_0_cg(ZZ - LL, Obj, W0=WW_old, C=C_ridge, eta=eta)
 
         elif method == "tron":
-            WW = sub_0_tron(ZZ - LL, Obj, W0=WW_old,
-                            C=C_ridge, eta=eta, tol=1e-8)
+            WW = sub_0_tron(ZZ - LL, Obj, W0=WW_old, C=C_ridge, eta=eta)
 
         elif method == "l-bfgs":
             WW = sub_0_lbfgs(ZZ - LL, Obj, W0=WW_old,
