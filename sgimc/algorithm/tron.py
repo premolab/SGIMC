@@ -3,8 +3,8 @@ from math import sqrt
 import numpy as np
 
 
-def trcg(Ax, r, x, tr_delta=0, rtol=1e-5, atol=1e-8, args=(),
-         verbose=False):
+def trcg(Ax, r, x, n_iterations=100, tr_delta=0, rtol=1e-5, atol=1e-8,
+         args=(), verbose=False):
     """Simple Conjugate gradient sovler with trust region control.
 
     For the given `x` and `r` solves `r = A(z - x)` and on termination
@@ -16,7 +16,8 @@ def trcg(Ax, r, x, tr_delta=0, rtol=1e-5, atol=1e-8, args=(),
 
     rtr, rtr_old = np.dot(r, r), 1.0
     cg_tol = sqrt(rtr) * rtol + atol
-    while iteration < len(x) and sqrt(rtr) > cg_tol:
+    n_iterations = min(n_iterations, len(x))
+    while iteration < n_iterations and sqrt(rtr) > cg_tol:
         Ap = Ax(p, *args)
         iteration += 1
 

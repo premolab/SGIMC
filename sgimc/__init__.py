@@ -7,6 +7,8 @@ import tqdm
 
 from sklearn.utils.extmath import safe_sparse_dot
 
+from sgimc.algorithm.admm import sub_0_tron
+
 
 class IMCProblem(object):
     """A container for the IMC problem."""
@@ -60,23 +62,44 @@ class IMCProblem(object):
         return self._transpose
 
 
+def step_qa_imc(problem, W, H, C, rtol=1e-5, atol=1e-8):
+    Obj = problem.objective(W, H, approx_type="quadratic")
+    return sub_0_tron(W, Obj, W0=W, C=C, eta=0., rtol=rtol, atol=atol)
+
+
 def imc_descent(problem, W, H, step_fn, step_kwargs={},
                 n_iterations=500, return_history=False,
                 rtol=1e-5, atol=1e-8, verbose=False,
-                check_product=True):
+                n_init_iterations=25, check_product=True):
 
     assert isinstance(problem, IMCProblem), \
         """`problem` must be an IMC problem."""
 
     b_stop, iteration, history_W, history_H = False, 0, [W], [H]
-    n_sq_dim_W, n_sq_dim_H = sqrt(np.prod(W.shape)), sqrt(np.prod(H.shape))
+    C_lasso, C_group, C_ridge = step_kwargs.get("C", (0., 0., 1.))
+    with tqdm.tqdm(initial=iteration, total=n_init_iterations,
+                   disable=not verbose) as pbar:
+        while (iteration < n_init_iterations):
+            # Gauss-Siedel iteration
+            W = step_qa_imc(problem, W, H, C_ridge, rtol=rtol, atol=atol)
+            H = step_qa_imc(problem.T, H, W, C_ridge, rtol=rtol, atol=atol)
 
-    # patch 2017-12-13 -- stopping criterion on the product of W H
-    M, n_sq_dim_M = None, 0
+            if return_history:
+                history_W.append(W)
+                history_H.append(H)
+
+            pbar.update(1)
+            iteration += 1
+        # end while
+    # end with
+
+    # stopping criterion on the product of W H
+    iteration, M, n_sq_dim_M = 0, None, 0
     if check_product:
         M = np.dot(W, H.T)
         n_sq_dim_M = sqrt(np.prod(M.shape))
 
+    n_sq_dim_W, n_sq_dim_H = sqrt(np.prod(W.shape)), sqrt(np.prod(H.shape))
     with tqdm.tqdm(initial=iteration, total=n_iterations,
                    disable=not verbose) as pbar:
         while (iteration < n_iterations) and (not b_stop):

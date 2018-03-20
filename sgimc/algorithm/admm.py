@@ -6,6 +6,7 @@ from scipy.optimize import fmin_l_bfgs_b
 
 from .tron import tron, trcg
 from .misc import f_valp, f_grad, f_hess, f_fused
+
 from ..ops import shrink
 
 
