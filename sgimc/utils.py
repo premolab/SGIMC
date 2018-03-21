@@ -109,13 +109,13 @@ def performance(problem, W, H, C, R_full):
 
     # Objective on the full matrix (expensive!)
     v_val_full = np.array([
-        problem.loss(problem.prediction(W[..., i], H[..., i]),
-                     R_full).sum() for i in range(n_iterations)])
+        problem.loss(problem.prediction(W[..., i], H[..., i]).ravel(),
+                     R_full.ravel()).sum() for i in range(n_iterations)])
 
     # Score on the full matrix (expensive!)
     score_full = np.array([
-        problem.score(problem.prediction(W[..., i], H[..., i]),
-                      R_full) for i in range(n_iterations)])
+        problem.score(problem.prediction(W[..., i], H[..., i]).ravel(),
+                      R_full.ravel()) for i in range(n_iterations)])
 
     metrics = np.stack([v_val_train, regularizer_value,
                         score_full, v_val_full,
