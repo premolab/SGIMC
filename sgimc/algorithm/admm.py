@@ -26,16 +26,18 @@ def sub_0_cg(D, Obj, W0, eta=1e0, C=1.0, rtol=1e-3, atol=1e-5):
 
     Obj.forward(W0)
     r, delta = -f_grad(W0, *args), np.zeros_like(W0)
-    trcg(f_hess, r, delta.reshape(-1), tr_delta=0, args=args,
-         rtol=rtol, atol=atol)
+    trcg(f_hess, r, delta.reshape(-1), args=args, tr_delta=0,
+         n_iterations=20, rtol=rtol, atol=atol)
 
     return W0 + delta
 
 
-def sub_0_tron(D, Obj, W0, eta=1e0, C=1.0, rtol=1e-3, atol=1e-5):
-    """Solve the Sub_0 problem with tron+cg."""
+def sub_0_tron(D, Obj, W0, eta=1e0, C=1.0, rtol=5e-2, atol=1e-4,
+               verbose=False):
+    """Solve the Sub_0 problem with tron+cg is in lelm-imf."""
     W, f_call = W0.copy(), (f_valp, f_grad, f_hess)
-    tron(f_call, W.reshape(-1), rtol=rtol, atol=atol, args=(Obj, D, eta, C))
+    tron(f_call, W.reshape(-1), n_iterations=5, rtol=rtol, atol=atol,
+         args=(Obj, D, eta, C), verbose=verbose)
     return W
 
 

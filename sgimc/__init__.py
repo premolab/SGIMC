@@ -62,9 +62,42 @@ class IMCProblem(object):
         return self._transpose
 
 
-def step_qa_imc(problem, W, H, C, rtol=1e-5, atol=1e-8):
+def step_qa_imc(problem, W, H, C, rtol=1e-5, atol=1e-8, verbose=False):
     Obj = problem.objective(W, H, approx_type="quadratic")
-    return sub_0_tron(W, Obj, W0=W, C=C, eta=0., rtol=rtol, atol=atol)
+    return sub_0_tron(W, Obj, W0=W, C=C, eta=0., rtol=rtol, atol=atol,
+                      verbose=False)
+
+
+def mf_descent(problem, W, H, C_ridge, n_iterations=500, return_history=False,
+               rtol=1e-5, atol=1e-8, verbose=False):
+
+    assert isinstance(problem, IMCProblem), \
+        """`problem` must be an IMC problem."""
+
+    b_stop, iteration, history_W, history_H = False, 0, [W], [H]
+    with tqdm.tqdm(initial=iteration, total=n_iterations,
+                   disable=not verbose) as pbar:
+        while (iteration < n_iterations):
+            # Gauss-Siedel iteration
+            W = step_qa_imc(problem, W, H, C_ridge, rtol=rtol, atol=atol,
+                            verbose=False)
+            H = step_qa_imc(problem.T, H, W, C_ridge, rtol=rtol, atol=atol,
+                            verbose=False)
+
+            if return_history:
+                history_W.append(W)
+                history_H.append(H)
+
+            pbar.update(1)
+            iteration += 1
+        # end while
+    # end with
+
+    if not return_history:
+        return W, H
+
+    # Stack along the last (3rd) dimension
+    return np.stack(history_W, axis=-1), np.stack(history_H, axis=-1)
 
 
 def imc_descent(problem, W, H, step_fn, step_kwargs={},
@@ -75,23 +108,12 @@ def imc_descent(problem, W, H, step_fn, step_kwargs={},
     assert isinstance(problem, IMCProblem), \
         """`problem` must be an IMC problem."""
 
-    b_stop, iteration, history_W, history_H = False, 0, [W], [H]
     C_lasso, C_group, C_ridge = step_kwargs.get("C", (0., 0., 1.))
-    with tqdm.tqdm(initial=iteration, total=n_init_iterations,
-                   disable=not verbose) as pbar:
-        while (iteration < n_init_iterations):
-            # Gauss-Siedel iteration
-            W = step_qa_imc(problem, W, H, C_ridge, rtol=rtol, atol=atol)
-            H = step_qa_imc(problem.T, H, W, C_ridge, rtol=rtol, atol=atol)
+    W, H = mf_descent(problem, W, H, max(1e-1, C_ridge), rtol=5e-2, atol=1e-4,
+                      n_iterations=n_init_iterations, return_history=False,
+                      verbose=verbose)
 
-            if return_history:
-                history_W.append(W)
-                history_H.append(H)
-
-            pbar.update(1)
-            iteration += 1
-        # end while
-    # end with
+    b_stop, iteration, history_W, history_H = False, 0, [W], [H]
 
     # stopping criterion on the product of W H
     iteration, M, n_sq_dim_M = 0, None, 0
@@ -142,5 +164,5 @@ def imc_descent(problem, W, H, step_fn, step_kwargs={},
     if not return_history:
         return W, H
 
-    # Stack along the 3rd dimension
+    # Stack along the last (3rd) dimension
     return np.stack(history_W, axis=-1), np.stack(history_H, axis=-1)

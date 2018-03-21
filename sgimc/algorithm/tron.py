@@ -3,7 +3,7 @@ from math import sqrt
 import numpy as np
 
 
-def trcg(Ax, r, x, n_iterations=100, tr_delta=0, rtol=1e-5, atol=1e-8,
+def trcg(Ax, r, x, n_iterations=1000, tr_delta=0, rtol=1e-5, atol=1e-8,
          args=(), verbose=False):
     """Simple Conjugate gradient sovler with trust region control.
 
@@ -11,16 +11,17 @@ def trcg(Ax, r, x, n_iterations=100, tr_delta=0, rtol=1e-5, atol=1e-8,
     updates `r` and `x` inplace with the final residual and solution `z`,
     respectively.
     """
+    if n_iterations > 0:
+        n_iterations = min(n_iterations, len(x))
+
     p, iteration = r.copy(), 0
     tr_delta_sq = tr_delta ** 2
 
     rtr, rtr_old = np.dot(r, r), 1.0
     cg_tol = sqrt(rtr) * rtol + atol
-    n_iterations = min(n_iterations, len(x))
-    while iteration < n_iterations and sqrt(rtr) > cg_tol:
+    while (iteration < n_iterations) and (sqrt(rtr) > cg_tol):
         Ap = Ax(p, *args)
         iteration += 1
-
         if verbose:
             print("""iter %2d |Ap| %5.3e |p| %5.3e |r| %5.3e |x| %5.3e """
                   """beta %5.3e""" %
@@ -34,7 +35,7 @@ def trcg(Ax, r, x, n_iterations=100, tr_delta=0, rtol=1e-5, atol=1e-8,
         # daxpy(&n, &( -alpha ), Ap, &inc, r, &inc);
         r -= alpha * Ap
 
-        # check trust region
+        # check trust region (diverges from leml-imf)
         if tr_delta_sq > 0:
             xTx = np.dot(x, x)
             if xTx > tr_delta_sq:
@@ -68,7 +69,7 @@ def trcg(Ax, r, x, n_iterations=100, tr_delta=0, rtol=1e-5, atol=1e-8,
     return iteration
 
 
-def tron(func, x, n_iterations=100, rtol=1e-3, atol=1e-5, args=(),
+def tron(func, x, n_iterations=1000, rtol=1e-3, atol=1e-5, args=(),
          verbose=False):
     """Trust region Newton optimization."""
     eta0, eta1, eta2 = 1e-4, 0.25, 0.75
@@ -87,7 +88,9 @@ def tron(func, x, n_iterations=100, rtol=1e-3, atol=1e-5, args=(),
     delta, grad_norm_tol = grad_norm, grad_norm * rtol + atol
     while iteration < n_iterations and grad_norm > grad_norm_tol:
         r, z = -grad, np.zeros_like(x)
-        cg_iter += trcg(f_hess_, r, z, tr_delta=delta, args=args, rtol=1e-2)
+        # tolerances and n_iterations as in leml-imf
+        cg_iter = trcg(f_hess_, r, z, tr_delta=delta, args=args,
+                       n_iterations=20, rtol=1e-1, atol=0.0)
 
         z_norm = np.linalg.norm(z)
         if iteration == 0:
