@@ -102,6 +102,15 @@ def load(filename):
 
     return obj
 
+
+def get_prediction(X, W_stack, H_stack, Y):
+    """Calculates the resulting matrix given by the model R_hat = X W H' Y'."""
+    
+    w, h = W_stack[...,-1], H_stack[...,-1]
+    r_hat = safe_sparse_dot(safe_sparse_dot(X, w), safe_sparse_dot(Y, h).T, dense_output=True)
+    
+    return r_hat
+
 # =============================== Functions to calculate loss ===============================
 
 def norm(r, mask=None):
@@ -118,10 +127,22 @@ def relative_loss(r, r_hat, mask=None):
 def calculate_loss(R, X, W_stack, H_stack, Y, mask=None):
     """Calculates loss specified in 'norm' fucntion between R and R_hat,
     given by the model R_hat = X W H' Y'. Mask provides element wise loss."""
-    w, h = W_stack[...,-1], H_stack[...,-1]
-    r_hat = safe_sparse_dot(safe_sparse_dot(X, w), safe_sparse_dot(Y, h).T, dense_output=True)
+    
+    r_hat = get_prediction(X, W_stack, H_stack, Y)
     l = relative_loss(R, r_hat, mask=mask)
+    
     return l
+
+
+def accuracy(r, r_hat, mask=None):
+    if mask is None:
+        a = r.ravel()
+        b = r_hat.ravel()
+        return len(a[a == b]) * 1. / len(a)
+    else:
+        a = r[mask]
+        b = r_hat[mask]
+        return len(a[a == b]) * 1. / len(a)
 
 
 def invert(mask1):
