@@ -103,11 +103,14 @@ def load(filename):
     return obj
 
 
-def get_prediction(X, W_stack, H_stack, Y):
+def get_prediction(X, W_stack, H_stack, Y, binarize=False):
     """Calculates the resulting matrix given by the model R_hat = X W H' Y'."""
     
     w, h = W_stack[...,-1], H_stack[...,-1]
     r_hat = safe_sparse_dot(safe_sparse_dot(X, w), safe_sparse_dot(Y, h).T, dense_output=True)
+    
+    if binarize:
+        r_hat = np.sign(r_hat)
     
     return r_hat
 
