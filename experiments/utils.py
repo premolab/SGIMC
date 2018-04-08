@@ -8,6 +8,8 @@ import signal
 import numpy as np
 from sklearn.utils.extmath import safe_sparse_dot
 
+from sgimc.utils import sparsify_with_mask
+
 
 class DelayedKeyboardInterrupt(object):
     """An uninterruptible critical section.
@@ -113,6 +115,23 @@ def get_prediction(X, W_stack, H_stack, Y, binarize=False):
         r_hat = np.sign(r_hat)
     
     return r_hat
+
+
+def combine_with_identity(X, return_sparse=True):
+    """Concatenates X with the right part of identity matrix to
+    to complete it up to the square matrix."""
+    
+    assert X.ndim == 2, 'Input matrix should have ndim = 2'
+    assert X.shape[0] > X.shape[1], 'What are you going to complete??'
+    
+    X_add = np.eye(X.shape[0])[...,X.shape[1]:]
+    X_comb = np.concatenate((X, X_add), axis=1)
+    
+    if return_sparse:
+        X_comb = sparsify_with_mask(X_comb, X_comb > 0)
+    
+    return X_comb
+    
 
 # =============================== Functions to calculate loss ===============================
 
