@@ -40,7 +40,7 @@ class QuadraticApproximation(object):
             if isspmatrix(sample_weight):
                 sample_weight = sample_weight.tocsr().data
 
-            sample_weight = np.ravel(sample_weight)
+            sample_weight = np.ravel(sample_weight).copy()
             assert len(sample_weight) == R.nnz, \
                 """`sample_weight` must have as many elements """ \
                 """as are nonzero in R."""

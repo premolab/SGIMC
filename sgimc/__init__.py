@@ -5,6 +5,8 @@ import numpy as np
 
 import tqdm
 
+from scipy.sparse import csr_matrix
+
 from sklearn.utils.extmath import safe_sparse_dot
 
 from sgimc.algorithm.admm import sub_0_tron
@@ -51,10 +53,19 @@ class IMCProblem(object):
     def T(self):
         """Create an instance of the transposed problem."""
         if not hasattr(self, "_transpose"):
+            sample_weight_T = None
+            if self.sample_weight is not None:
+                # sample weights are a matrix with the sparsity and shape of R
+                C = csr_matrix((self.sample_weight, self._R.nonzero()),
+                               shape=self._R.shape, dtype=self._R.dtype)
+
+                # transpose, convert to physical CSR, and then copy
+                sample_weight_T = C.T.tocsr().data.copy()
+
             # create an instance of the transposed problem
             self._transpose = IMCProblem(
                 objective=self._objective, X=self._Y, Y=self._X, R=self._R.T,
-                sample_weight=self.sample_weight, n_threads=self.n_threads)
+                sample_weight=sample_weight_T, n_threads=self.n_threads)
 
             # back reference to self
             self._transpose._transpose = self
