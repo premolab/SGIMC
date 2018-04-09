@@ -139,7 +139,8 @@ def combine_with_identity(X, return_sparse=True):
     return X_comb
 
 
-def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids_begins_from_1=True):
+def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids_begins_from_1=True,
+                             R_shape=None):
     if user_ids_begins_from_1:
         user_ids = interactions[0] - 1
     else:
@@ -152,7 +153,8 @@ def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids
         
     ratings = interactions[2]
     
-    R_shape = (np.max(user_ids)+1, np.max(item_ids)+1)
+    if R_shape is None:
+        R_shape = (np.max(user_ids)+1, np.max(item_ids)+1)
     R_coo = coo_matrix((ratings, (user_ids, item_ids)), shape=R_shape, dtype='float64')
     
     return R_coo
