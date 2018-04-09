@@ -6,7 +6,13 @@ import pickle
 import signal
 
 import numpy as np
+from math import sqrt
+
+from scipy.sparse import coo_matrix
+
 from sklearn.utils.extmath import safe_sparse_dot
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import train_test_split
 
 from sgimc.utils import sparsify_with_mask
 
@@ -131,6 +137,32 @@ def combine_with_identity(X, return_sparse=True):
         X_comb = sparsify_with_mask(X_comb, X_comb > 0)
     
     return X_comb
+
+
+def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids_begins_from_1=True):
+    if user_ids_begins_from_1:
+        user_ids = interactions[0] - 1
+    else:
+        user_ids = interactions[0]
+        
+    if item_ids_begins_from_1:
+        item_ids = interactions[1] - 1
+    else:
+        item_ids = interactions[1]
+        
+    ratings = interactions[2]
+    
+    R_shape = (np.max(user_ids)+1, np.max(item_ids)+1)
+    R_coo = coo_matrix((ratings, (user_ids, item_ids)), shape=R_shape, dtype='float64')
+    
+    return R_coo
+
+
+def sample_from_interactions(interactions, train_size, seed=42):
+    train_t, test_t = train_test_split(interactions.T, train_size=train_size,
+                                       random_state=seed, shuffle=False)
+    train, test = train_t.T, test_t.T
+    return train, test
     
 
 # =============================== Functions to calculate loss ===============================
@@ -156,7 +188,17 @@ def calculate_loss(R, X, W_stack, H_stack, Y, mask=None):
     return l
 
 
+def rmse(r, r_hat, mask=None):
+    """Calculates rmse between R and R_hat, elements can be specified by mask."""
+    if mask is None:
+        mse = mean_squared_error(r.ravel(), r_hat.ravel())
+    else:
+        mse = mean_squared_error(r[mask], r_hat[mask])
+    return sqrt(mse)
+
+
 def accuracy(r, r_hat, mask=None):
+    """Calculates accuracy between R and R_hat, elements can be specified by mask."""
     if mask is None:
         a = r.ravel()
         b = r_hat.ravel()

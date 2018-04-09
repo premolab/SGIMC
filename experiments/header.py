@@ -5,7 +5,7 @@ from scipy.sparse import coo_matrix
 
 import matplotlib.pyplot as plt
 
-from sgimc.utils import sparsify, sparsify_with_mask
+from sgimc.utils import sparsify, sparsify_with_mask, make_imc_data
 
 from sgimc import IMCProblem
 
@@ -19,7 +19,9 @@ from sgimc.algorithm.admm import sub_m
 
 from sgimc import imc_descent
 
-from utils import calculate_loss, invert, accuracy, get_prediction
+from utils import calculate_loss, invert,   \
+                  accuracy, get_prediction, \
+                  rmse, relative_loss
 
 random_state = np.random.RandomState(0x0BADCAFE)
 
