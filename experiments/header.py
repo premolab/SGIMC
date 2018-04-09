@@ -4,6 +4,7 @@ from tqdm import tqdm
 from scipy.sparse import coo_matrix
 
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 
 from sgimc.utils import sparsify, sparsify_with_mask, make_imc_data
 
