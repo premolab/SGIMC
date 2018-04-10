@@ -124,13 +124,11 @@ def get_prediction(X, W_stack, H_stack, Y, binarize=False):
 
 
 def combine_with_identity(X, return_sparse=True):
-    """Concatenates X with the right part of identity matrix to
-    to complete it up to the square matrix."""
+    """Concatenates X with the identity matrix on the right."""
     
     assert X.ndim == 2, 'Input matrix should have ndim = 2'
-    assert X.shape[0] > X.shape[1], 'What are you going to complete??'
     
-    X_add = np.eye(X.shape[0])[...,X.shape[1]:]
+    X_add = np.eye(X.shape[0])
     X_comb = np.concatenate((X, X_add), axis=1)
     
     if return_sparse:
