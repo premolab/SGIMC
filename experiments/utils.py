@@ -12,7 +12,7 @@ from scipy.sparse import coo_matrix
 
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split as TTS
 
 from sgimc.utils import sparsify_with_mask
 
@@ -138,7 +138,8 @@ def combine_with_identity(X, return_sparse=True):
 
 
 def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids_begins_from_1=True,
-                             R_shape=None):
+                             shape=None):
+    # task-hardcoded function
     if user_ids_begins_from_1:
         user_ids = interactions[0] - 1
     else:
@@ -151,19 +152,43 @@ def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids
         
     ratings = interactions[2]
     
-    if R_shape is None:
-        R_shape = (np.max(user_ids)+1, np.max(item_ids)+1)
-    R_coo = coo_matrix((ratings, (user_ids, item_ids)), shape=R_shape, dtype='float64')
+    if shape is None:
+        shape = (np.max(user_ids)+1, np.max(item_ids)+1)
+    R_coo = coo_matrix((ratings, (user_ids, item_ids)), shape=shape, dtype='float64')
     
     return R_coo
 
 
 def sample_from_interactions(interactions, train_size, seed=42):
-    train_t, test_t = train_test_split(interactions.T, train_size=train_size,
-                                       random_state=seed, shuffle=False)
+    """Randomly (with specified seed) sample from interactions."""
+    train_t, test_t = TTS(interactions.T, train_size=train_size, random_state=seed, shuffle=False)
     train, test = train_t.T, test_t.T
     return train, test
     
+    
+def divide_train_test(I, shape, train_size, seed=42):
+    # TODO: add q1 and q2 instead train_size (q)s.
+    # TODO: make it work with arbitrary user and item ids.
+    n, m = shape
+    user_ids = np.array([i for i in range(n)])
+    item_ids = np.array([i for i in range(m)])
+    
+    train_user_ids, test_user_ids = TTS(user_ids, train_size=train_size, random_state=seed, shuffle=False)
+    train_item_ids, test_item_ids = TTS(item_ids, train_size=train_size, random_state=seed, shuffle=False)
+    
+    oo, on, no, nn = [], [], [], []
+    for elem in I.T:
+        if elem[0] in train_user_ids and elem[1] in train_item_ids:
+            oo.append(elem)
+        elif elem[0] in train_user_ids and elem[1] in test_item_ids:
+            on.append(elem)
+        elif elem[0] in test_user_ids and elem[1] in train_item_ids:
+            no.append(elem)
+        else:
+            nn.append(elem)
+    
+    return np.array(oo).T, np.array(on).T, np.array(no).T, np.array(nn).T
+
 
 # =============================== Functions to calculate loss ===============================
 
