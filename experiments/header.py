@@ -45,3 +45,5 @@ def step_decoupled(problem, W, H, C, eta, rtol=1e-5, atol=1e-8):
 
     return decoupled_step(Obj, W, C, eta, rtol=rtol, atol=atol)
 
+import warnings
+warnings.filterwarnings('ignore')
