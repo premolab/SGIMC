@@ -132,7 +132,7 @@ def combine_with_identity(X, return_sparse=True):
     X_comb = np.concatenate((X, X_add), axis=1)
     
     if return_sparse:
-        X_comb = sparsify_with_mask(X_comb, X_comb > 0)
+        X_comb = sparsify_with_mask(X_comb, X_comb != 0)
     
     return X_comb
 
@@ -190,6 +190,21 @@ def divide_train_test(I, shape, train_size, seed=42):
     return np.array(oo).T, np.array(on).T, np.array(no).T, np.array(nn).T
 
 
+def add_noise_features(X, n_features, scale, random_state, return_sparse=True):
+    
+    if n_features == 0:
+        return X
+    
+    n = X.shape[0]
+    X_noise = random_state.normal(scale=scale, size=(n, n_features))
+    X_comb = np.concatenate((X.toarray(), X_noise), axis=1)
+    
+    if return_sparse:
+        X_comb = sparsify_with_mask(X_comb, X_comb != 0)
+        
+    return X_comb
+
+
 # =============================== Functions to calculate loss ===============================
 
 def norm(r, mask=None):
@@ -234,6 +249,7 @@ def accuracy(r, r_hat, mask=None):
         return len(a[a == b]) * 1. / len(a)
 
 
+# remove this shit
 def invert(mask1):
     """Inverts the given boolean mask."""
     assert not mask1 is None
