@@ -48,7 +48,7 @@ include_dirs = [join("sgimc", "src", "include"), numpy.get_include()]
 include_dirs.extend(blas_info.pop("include_dirs", []))
 
 extra_compile_args = blas_info.pop("extra_compile_args", [])
-extra_compile_args.extend(["-std=c99", "-O3"])
+extra_compile_args.extend(["-std=c99", "-O3", "-Ofast"])
 
 extensions = [
     Extension("sgimc.ops", sources=sources, libraries=cblas_libs,
@@ -60,8 +60,8 @@ extensions = [
 # python setup.py build_ext [--inplace]
 setup(
     name="sgimc",
-    version="0.2.dev0",
-    description="""Fast sparse operrations for the Sparse Group IMC.""",
+    version="0.3",
+    description="""Sparse Group IMC for regression and binary classification""",
     # url="",
     author="Ivan Nazarov",
     # author_email="ivan.nazaor@skolkovotech.ru",
