@@ -446,7 +446,7 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
 
         return self._gauss_siedel(problem, W, H)
 
-    def predict(self, X, Y, W=None, H=None):
+    def predict_proba(self, X, Y, W=None, H=None):
         """Compute probability of the `+1` class.
 
         Parameters
@@ -471,7 +471,6 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
         -------
         proba : array-like, shape (n_1, n_2)
             Returns the probability of `+1` class for each entry.
-
         """
 
         X, Y, W, H = self._check_predict_inputs(X, Y, W, H)
@@ -479,7 +478,35 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
                                 safe_sparse_dot(Y, H).T)
         return expit(logit)
 
+    def predict(self, X, Y, W=None, H=None):
+        """Predict the final `-/+ 1` class label.
 
+        Parameters
+        ----------
+        X : {array-like, sparse matrix}, shape (n_1, d_1)
+            Row side-features, where n_1 is the number of rows and d_1 is
+            the number of features per row.
+
+        Y : {array-like, sparse matrix}, shape (n_2, d_2)
+            Column side-features, where n_2 is the number of columns and d_2
+            is the number of side-features per column.
+
+        W : optional array-like, shape (d_1, k)
+            Coefficient matrix of the row side-features to use for prediction.
+            The estimated matrix `coef_W_` is used if `W` is not provided.
+
+        H : optional array-like, shape (d_2, k)
+            Coefficient matrix of the column side-features to use for prediction.
+            The estimated matrix `coef_H_` is used if `H` is not provided.
+
+        Returns
+        -------
+        label : array-like, shape (n_1, n_2)
+            Returns the `-1/+1` class label for each entry.
+        """
+
+        X, Y, W, H = self._check_predict_inputs(X, Y, W, H)
+        return np.sign(safe_sparse_dot(X, W), safe_sparse_dot(Y, H).T)
 
 
 class SparseGroupIMCRegressor(BaseSparseGroupIMC):
@@ -597,8 +624,8 @@ class SparseGroupIMCRegressor(BaseSparseGroupIMC):
 
         return self._gauss_siedel(problem, W, H)
 
-    def predict_proba(self, X, Y, W=None, H=None):
-        """Compute probability of the `+1` class.
+    def predict(self, X, Y, W=None, H=None):
+        """Compute the IMC regression prediction.
 
         Parameters
         ----------
@@ -620,42 +647,10 @@ class SparseGroupIMCRegressor(BaseSparseGroupIMC):
 
         Returns
         -------
-        proba : array-like, shape (n_1, n_2)
-            Returns the probability of `+1` class for each entry.
-
+        out : array-like, shape (n_1, n_2)
+            Returns the regression prediction.
         """
 
         X, Y, W, H = self._check_predict_inputs(X, Y, W, H)
         return safe_sparse_dot(safe_sparse_dot(X, W),
                                safe_sparse_dot(Y, H).T)
-
-    def predict(self, X, Y, W=None, H=None):
-        """Predict the final `-/+ 1` class label.
-
-        Parameters
-        ----------
-        X : {array-like, sparse matrix}, shape (n_1, d_1)
-            Row side-features, where n_1 is the number of rows and d_1 is
-            the number of features per row.
-
-        Y : {array-like, sparse matrix}, shape (n_2, d_2)
-            Column side-features, where n_2 is the number of columns and d_2
-            is the number of side-features per column.
-
-        W : optional array-like, shape (d_1, k)
-            Coefficient matrix of the row side-features to use for prediction.
-            The estimated matrix `coef_W_` is used if `W` is not provided.
-
-        H : optional array-like, shape (d_2, k)
-            Coefficient matrix of the column side-features to use for prediction.
-            The estimated matrix `coef_H_` is used if `H` is not provided.
-
-        Returns
-        -------
-        proba : array-like, shape (n_1, n_2)
-            Returns the probability of `+1` class for each entry.
-
-        """
-
-        X, Y, W, H = self._check_predict_inputs(X, Y, W, H)
-        return np.sign(safe_sparse_dot(X, W), safe_sparse_dot(Y, H).T)
