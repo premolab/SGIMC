@@ -506,7 +506,8 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
         """
 
         X, Y, W, H = self._check_predict_inputs(X, Y, W, H)
-        return np.sign(safe_sparse_dot(X, W), safe_sparse_dot(Y, H).T)
+        return np.sign(safe_sparse_dot(safe_sparse_dot(X, W),
+                                       safe_sparse_dot(Y, H).T))
 
 
 class SparseGroupIMCRegressor(BaseSparseGroupIMC):
