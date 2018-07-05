@@ -1,10 +1,14 @@
 """Utility functions."""
+import os
+import time
+import gzip
+import pickle
+
 import numpy as np
-import matplotlib.pyplot as plt
-
 from scipy.sparse import coo_matrix
-
 from sklearn.utils import check_random_state
+from sklearn.model_selection._split import _validate_shuffle_split
+import matplotlib.pyplot as plt
 
 from . import IMCProblem
 
@@ -62,6 +66,100 @@ def sparsify_with_mask(R, mask):
                        shape=R.shape, dtype=np.float)
 
     return R_coo.tocsr()
+
+
+def save(obj, path, filename=None, gz=None):
+    """Pickle a pythonic `obj` into a file given by `path`.
+
+    Parameters
+    ----------
+    obj: any python object
+        An object to pickle.
+
+    path: string
+        A file in which to pickle the object.
+
+    filename: string, optinal
+        Specify filename for re-building experiments results. If None - will
+        be saved as time.
+
+    gz: integer, or None, optinal
+        If None, then does not apply compression while pickling. Otherwise
+        must be an integer 0-9 which determines the level of GZip compression:
+        the lower the level the less thorough but the more faster the
+        compression is. Value `0` produces a GZip archive with no compression
+        whatsoever, whereas the value of `9` produces the most compressed
+        archive.
+
+    Returns
+    -------
+    filename: string
+        The name of the resulting archive.
+    """
+    if not(gz is None or (isinstance(gz, int) and 0 <= gz <= 9)):
+        raise TypeError("""`gz` parameter must be either `None` """
+                        """or an integer 0-9.""")
+
+    if not os.path.isdir(path):
+        os.makedirs(path)
+
+    open_ = open if gz is None else lambda f, m: gzip.open(f, m, gz)
+    if filename is None:
+        filename_ = "%s-%s.%s" % (path, time.strftime("%Y%m%d_%H%M%S"),
+                                  "pic" if gz is None else "gz")
+    else:
+        filename_ = "%s%s%s" % (path, filename,
+                                '.pic' if gz is None else '.gz')
+
+    with open_(filename_, "wb+") as f:
+        pickle.dump(obj, f)
+    if filename is None:
+        return filename_
+
+
+def load(filename):
+    """Recover an object from the file identified by `filename`.
+
+    Parameters
+    ----------
+    filename: string
+        A `file` in which an object is pickled.
+
+    Returns
+    -------
+    object: a python object
+        The recovered pythonic object.
+    """
+    open_ = open if not filename.endswith(".gz") else gzip.open
+
+    with open_(filename, "rb") as f:
+        obj = pickle.load(f)
+
+    return obj
+
+
+def mc_split(R, n_splits=1, test_size='default', train_size=None, random_state=None):
+    """Train-test splitting."""
+    n_samples = np.prod(R.shape)
+    n_train, n_test = _validate_shuffle_split(n_samples, test_size, train_size)
+
+    rng = check_random_state(random_state)
+    for i in range(n_splits):
+        permutation = rng.permutation(n_samples)
+        ind_test = permutation[:n_test]
+        ind_train = permutation[n_test:(n_test + n_train)]
+
+        yield ind_train, ind_test
+
+
+def get_submatrix(mat, indices):
+    """Extracts a sparse submatrix from a dense one accorind to the provided indices."""
+    nz_ij = np.unravel_index(indices, mat.shape)
+    subm = coo_matrix((mat.flat[indices], nz_ij), shape=mat.shape)
+    return subm.tocsr()
+
+
+# =================== some questionable functions =========================================
 
 
 def performance(problem, W, H, C, R_full):

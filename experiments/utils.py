@@ -1,18 +1,11 @@
 """Various utility functions and classes to help with experimentation."""
-import os
-import time
-import gzip
-import pickle
 import signal
 
 import numpy as np
 from math import sqrt
-
 from scipy.sparse import coo_matrix
-
 from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import train_test_split as TTS
 
 from sgimc.utils import sparsify_with_mask
 
@@ -41,76 +34,6 @@ class DelayedKeyboardInterrupt(object):
             self.old_handler(*self.signal_received)
 
 
-def save(obj, path, filename=None, gz=None):
-    """Pickle a pythonic `obj` into a file given by `path`.
-
-    Parameters
-    ----------
-    obj: any python object
-        An object to pickle.
-
-    path: string
-        A file in which to pickle the object.
-
-    filename: string, optinal
-        Specify filename for re-building experiments results. If None - will
-        be saved as time.
-
-    gz: integer, or None, optinal
-        If None, then does not apply compression while pickling. Otherwise
-        must be an integer 0-9 which determines the level of GZip compression:
-        the lower the level the less thorough but the more faster the
-        compression is. Value `0` produces a GZip archive with no compression
-        whatsoever, whereas the value of `9` produces the most compressed
-        archive.
-
-    Returns
-    -------
-    filename: string
-        The name of the resulting archive.
-    """
-    if not(gz is None or (isinstance(gz, int) and 0 <= gz <= 9)):
-        raise TypeError("""`gz` parameter must be either `None` """
-                        """or an integer 0-9.""")
-
-    if not os.path.isdir(path):
-        os.makedirs(path)
-
-    open_ = open if gz is None else lambda f, m: gzip.open(f, m, gz)
-    if filename is None:
-        filename_ = "%s-%s.%s" % (path, time.strftime("%Y%m%d_%H%M%S"),
-                                  "pic" if gz is None else "gz")
-    else:
-        filename_ = "%s%s%s" % (path, filename,
-                                '.pic' if gz is None else '.gz')
-
-    with open_(filename_, "wb+") as f:
-        pickle.dump(obj, f)
-    if filename is None:
-        return filename_
-
-
-def load(filename):
-    """Recover an object from the file identified by `filename`.
-
-    Parameters
-    ----------
-    filename: string
-        A `file` in which an object is pickled.
-
-    Returns
-    -------
-    object: a python object
-        The recovered pythonic object.
-    """
-    open_ = open if not filename.endswith(".gz") else gzip.open
-
-    with open_(filename, "rb") as f:
-        obj = pickle.load(f)
-
-    return obj
-
-
 def get_prediction(X, W_stack, H_stack, Y, binarize=False):
     """Calculates the resulting matrix given by the model R_hat = X W H' Y'."""
     
@@ -135,59 +58,6 @@ def combine_with_identity(X, return_sparse=True):
         X_comb = sparsify_with_mask(X_comb, X_comb != 0)
     
     return X_comb
-
-
-def from_interactions_to_coo(interactions, user_ids_begins_from_1=True, item_ids_begins_from_1=True,
-                             shape=None):
-    # task-hardcoded function
-    if user_ids_begins_from_1:
-        user_ids = interactions[0] - 1
-    else:
-        user_ids = interactions[0]
-        
-    if item_ids_begins_from_1:
-        item_ids = interactions[1] - 1
-    else:
-        item_ids = interactions[1]
-        
-    ratings = interactions[2]
-    
-    if shape is None:
-        shape = (np.max(user_ids)+1, np.max(item_ids)+1)
-    R_coo = coo_matrix((ratings, (user_ids, item_ids)), shape=shape, dtype='float64')
-    
-    return R_coo
-
-
-def sample_from_interactions(interactions, train_size, seed=42):
-    """Randomly (with specified seed) sample from interactions."""
-    train_t, test_t = TTS(interactions.T, train_size=train_size, random_state=seed, shuffle=False)
-    train, test = train_t.T, test_t.T
-    return train, test
-    
-    
-def divide_train_test(I, shape, train_size, seed=42):
-    # TODO: add q1 and q2 instead train_size (q)s.
-    # TODO: make it work with arbitrary user and item ids.
-    n, m = shape
-    user_ids = np.array([i for i in range(n)])
-    item_ids = np.array([i for i in range(m)])
-    
-    train_user_ids, test_user_ids = TTS(user_ids, train_size=train_size, random_state=seed, shuffle=False)
-    train_item_ids, test_item_ids = TTS(item_ids, train_size=train_size, random_state=seed, shuffle=False)
-    
-    oo, on, no, nn = [], [], [], []
-    for elem in I.T:
-        if elem[0] in train_user_ids and elem[1] in train_item_ids:
-            oo.append(elem)
-        elif elem[0] in train_user_ids and elem[1] in test_item_ids:
-            on.append(elem)
-        elif elem[0] in test_user_ids and elem[1] in train_item_ids:
-            no.append(elem)
-        else:
-            nn.append(elem)
-    
-    return np.array(oo).T, np.array(on).T, np.array(no).T, np.array(nn).T
 
 
 def add_noise_features(X, n_features, scale, random_state, return_sparse=True):
@@ -247,12 +117,3 @@ def accuracy(r, r_hat, mask=None):
         a = r[mask]
         b = r_hat[mask]
         return len(a[a == b]) * 1. / len(a)
-
-
-# remove this shit
-def invert(mask1):
-    """Inverts the given boolean mask."""
-    assert not mask1 is None
-    mask1 = np.asarray(mask1, dtype='int8')
-    mask2 = np.array(mask1 - 1, dtype='bool')
-    return mask2
