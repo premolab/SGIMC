@@ -4,7 +4,7 @@ ifndef USE_OPENMP
 endif
 
 # base compile flags
-CFLAGS_ =
+CFLAGS_ = -Ofast -O3
 
 # open MP flags
 OPENMP_FLAGS =
