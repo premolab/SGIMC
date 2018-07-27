@@ -2,9 +2,7 @@
 import signal
 
 import numpy as np
-from math import sqrt
 from scipy.sparse import coo_matrix
-from sklearn.utils.extmath import safe_sparse_dot
 from sklearn.metrics import mean_squared_error
 
 from sgimc.utils import sparsify_with_mask
@@ -32,18 +30,6 @@ class DelayedKeyboardInterrupt(object):
         signal.signal(signal.SIGINT, self.old_handler)
         if self.signal_received:
             self.old_handler(*self.signal_received)
-
-
-def get_prediction(X, W_stack, H_stack, Y, binarize=False):
-    """Calculates the resulting matrix given by the model R_hat = X W H' Y'."""
-    
-    w, h = W_stack[...,-1], H_stack[...,-1]
-    r_hat = safe_sparse_dot(safe_sparse_dot(X, w), safe_sparse_dot(Y, h).T, dense_output=True)
-    
-    if binarize:
-        r_hat = np.sign(r_hat)
-    
-    return r_hat
 
 
 def combine_with_identity(X, return_sparse=True):
@@ -105,15 +91,3 @@ def rmse(r, r_hat, mask=None):
     else:
         mse = mean_squared_error(r[mask], r_hat[mask])
     return sqrt(mse)
-
-
-def accuracy(r, r_hat, mask=None):
-    """Calculates accuracy between R and R_hat, elements can be specified by mask."""
-    if mask is None:
-        a = r.ravel()
-        b = r_hat.ravel()
-        return len(a[a == b]) * 1. / len(a)
-    else:
-        a = r[mask]
-        b = r_hat[mask]
-        return len(a[a == b]) * 1. / len(a)
