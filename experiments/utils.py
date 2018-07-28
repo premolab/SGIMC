@@ -32,20 +32,6 @@ class DelayedKeyboardInterrupt(object):
             self.old_handler(*self.signal_received)
 
 
-def combine_with_identity(X, return_sparse=True):
-    """Concatenates X with the identity matrix on the right."""
-    
-    assert X.ndim == 2, 'Input matrix should have ndim = 2'
-    
-    X_add = np.eye(X.shape[0])
-    X_comb = np.concatenate((X, X_add), axis=1)
-    
-    if return_sparse:
-        X_comb = sparsify_with_mask(X_comb, X_comb != 0)
-    
-    return X_comb
-
-
 def add_noise_features(X, n_features, scale, random_state, return_sparse=True):
     
     if n_features == 0:
@@ -82,12 +68,3 @@ def calculate_loss(R, X, W_stack, H_stack, Y, mask=None):
     l = relative_loss(R, r_hat, mask=mask)
     
     return l
-
-
-def rmse(r, r_hat, mask=None):
-    """Calculates rmse between R and R_hat, elements can be specified by mask."""
-    if mask is None:
-        mse = mean_squared_error(r.ravel(), r_hat.ravel())
-    else:
-        mse = mean_squared_error(r[mask], r_hat[mask])
-    return sqrt(mse)
