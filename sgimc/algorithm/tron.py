@@ -23,10 +23,11 @@ def trcg(Ax, r, x, n_iterations=1000, tr_delta=0, rtol=1e-5, atol=1e-8,
         Ap = Ax(p, *args)
         iteration += 1
         if verbose:
-            print("""iter %2d |Ap| %5.3e |p| %5.3e |r| %5.3e |x| %5.3e """
-                  """beta %5.3e""" %
+            print("""iter %2d |Ap| %5.3e |p| %5.3e """
+                  """|r| %5.3e |x| %5.3e beta %5.3e""" %
                   (iteration, np.linalg.norm(Ap), np.linalg.norm(p),
                    np.linalg.norm(r), np.linalg.norm(x), rtr / rtr_old))
+        # end if
 
         # ddot(&n, p, &inc, Ap, &inc);
         alpha = rtr / np.dot(p, Ap)
@@ -35,12 +36,12 @@ def trcg(Ax, r, x, n_iterations=1000, tr_delta=0, rtol=1e-5, atol=1e-8,
         # daxpy(&n, &( -alpha ), Ap, &inc, r, &inc);
         r -= alpha * Ap
 
-        # check trust region (diverges from leml-imf)
+        # check trust region (diverges from tron.cpp in liblinear and leml-imf)
         if tr_delta_sq > 0:
             xTx = np.dot(x, x)
             if xTx > tr_delta_sq:
                 xTp = np.dot(x, p)
-                if(xTp > 0):
+                if xTp > 0:
                     # backtrack into the trust region
                     p_nrm = np.linalg.norm(p)
 
@@ -63,8 +64,7 @@ def trcg(Ax, r, x, n_iterations=1000, tr_delta=0, rtol=1e-5, atol=1e-8,
         p *= rtr / rtr_old
         # daxpy(&n, &one, r, &1, p, &1);
         p += r
-
-    # end for
+    # end while
 
     return iteration
 
@@ -96,7 +96,7 @@ def tron(func, x, n_iterations=1000, rtol=1e-3, atol=1e-5, args=(),
         if iteration == 0:
             delta = min(delta, z_norm)
 
-        # trcg finds x and r s.t. r + A z = -g and \|r\|\to \min
+        # trcg finds z and r s.t. r + A z = -g and \|r\|\to \min
         # f(x) - f(x+z) ~ -0.5 * (2 g'z + z'Az) = -0.5 * (g'z + z'(-r))
         linear = np.dot(z, grad)
         approxred = -0.5 * (linear - np.dot(z, r))
@@ -122,10 +122,11 @@ def tron(func, x, n_iterations=1000, rtol=1e-3, atol=1e-5, args=(),
         # end if
 
         if verbose:
-            print("""iter %2d act %5.3e pre %5.3e delta %5.3e f """
-                  """%5.3e |g| %5.3e CG %3d""" %
+            print("""iter %2d act %5.3e pre %5.3e delta %5.3e """
+                  """f %5.3e |z| %5.3e |g| %5.3e CG %3d""" %
                   (iteration, actualred, approxred,
-                   delta, fval, grad_norm, cg_iter))
+                   delta, fval, z_norm, grad_norm, cg_iter))
+        # end if
 
         if actualred > eta0 * approxred:
             x += z
@@ -136,15 +137,30 @@ def tron(func, x, n_iterations=1000, rtol=1e-3, atol=1e-5, args=(),
             # r, z = -grad, np.zeros_like(x)
         # end if
 
-        if verbose:
-            if fval < -1e32:
+        if fval < -1e32:
+            if verbose:
                 print("WARNING: f < -1.0e+32")
+            break
+        # end if
 
-            if abs(actualred) <= 0 and approxred <= 0:
+        if abs(actualred) <= 0 and approxred <= 0:
+            if verbose:
                 print("WARNING: actred and prered <= 0")
+            break
+        # end if
 
-            if abs(actualred) <= 1e-12 * abs(fval) and \
-               abs(approxred) <= 1e-12 * abs(fval):
+        if abs(actualred) <= 1e-12 * abs(fval) and \
+           abs(approxred) <= 1e-12 * abs(fval):
+            if verbose:
                 print("WARNING: actred and prered too small")
+            break
+        # end if
+
+        if delta <= rtol * (z_norm + atol):
+            if verbose:
+                print("WARNING: degenerate trust region")
+            break
+        # end if
+    # end while
 
     return cg_iter
