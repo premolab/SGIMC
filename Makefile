@@ -1,47 +1,36 @@
 # A stripped down makefile from xgboost
-ifndef USE_OPENMP
-	USE_OPENMP = 1
-endif
-
 # base compile flags
-CFLAGS_ = -Ofast -O3
+CFLAGS += -Ofast -O3
 
-# open MP flags
-OPENMP_FLAGS =
+# open MP flags (enable by default)
+USE_OPENMP ?= 1
 ifeq ($(USE_OPENMP), 1)
 	OPENMP_FLAGS = -fopenmp
 else
 	OPENMP_FLAGS = -DDISABLE_OPENMP
 endif
 
-CFLAGS_ += $(OPENMP_FLAGS)
+export CFLAGS += $(OPENMP_FLAGS)
 
 # set compiler defaults for OSX versus *nix
 OS := $(shell uname)
 ifeq ($(OS), Darwin)
 	ifeq ($(USE_OPENMP), 1)
-		export CC = gcc-7
+		export CC ?= gcc-7
 	endif
+	export CC ?= $(if $(shell which clang), clang, gcc)
+
 	ifeq ($(USE_OPENMP), 1)
-		export CXX = g++-7
+		export CXX ?= g++-7
 	endif
-	ifndef CC
-		export CC = $(if $(shell which clang), clang, gcc)
-	endif
-	ifndef CXX
-		export CXX = $(if $(shell which clang++), clang++, g++)
-	endif
+	export CXX ?= $(if $(shell which clang++), clang++, g++)
+
 else
 # linux defaults
-	ifndef CC
-		export CC = gcc
-	endif
-	ifndef CXX
-		export CXX = g++
-	endif
+	export CC ?= gcc
+	export CXX ?= g++
 endif
 
-export CFLAGS = $(CFLAGS_)
 
 # build the library
 all: clean install
