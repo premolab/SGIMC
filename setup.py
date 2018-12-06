@@ -60,7 +60,7 @@ extensions = [
 # python setup.py build_ext [--inplace]
 setup(
     name="sgimc",
-    version="0.3.1",
+    version="0.3.2",
     description="""Sparse Group IMC for regression and """
                 """binary classification""",
     # url="",
