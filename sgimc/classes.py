@@ -122,7 +122,9 @@ def imc_descent(problem, W, H, step_fn, step_kwargs={},
                 n_iterations=500, return_history=False,
                 rtol=1e-5, atol=1e-8, verbose=False,
                 n_init_iterations=25, check_product=True):
-    warnings.warn("""`imc_descent` is deprecated. Please use """,
+    warnings.warn("""`imc_descent` is deprecated. Please use """
+                  """`SparseGroupIMCClassifier` or """
+                  """`SparseGroupIMCRegressor` instead.""",
                   DeprecationWarning)
 
     assert isinstance(problem, IMCProblem), \
@@ -218,30 +220,51 @@ class BaseSparseGroupIMC(object):
                              n_iterations=self.max_admm_iter,
                              method="tron", rtol=rtol, atol=atol)
 
-        WW, LL = W.copy(), np.zeros_like(W)  # C_lasso, C_group, C_ridge = C
+        C_lasso, C_group, C_ridge = C
+        WW, LL = W.copy(), np.zeros_like(W)
 
         # Since the default setting is 2 inner iterations,
         #  the admm_step loop was unrolled and simplified.
-        ZZ = sub_m(WW + LL, C[0], C[1], 0., eta=self.eta)
-        WW = sub_0_tron(ZZ - LL, obj, W0=WW, C=C[2], eta=self.eta,
+        ZZ = sub_m(WW + LL, C_lasso, C_group, 0., eta=self.eta)
+        WW = sub_0_tron(ZZ - LL, obj, W0=WW, C=C_ridge, eta=self.eta,
                         rtol=5e-2, atol=1e-4, verbose=False)
         LL += WW - ZZ
 
-        ZZ = sub_m(WW + LL, C[0], C[1], 0., eta=self.eta)
-        WW = sub_0_tron(ZZ - LL, obj, W0=WW, C=C[2], eta=self.eta,
+        ZZ = sub_m(WW + LL, C_lasso, C_group, 0., eta=self.eta)
+        WW = sub_0_tron(ZZ - LL, obj, W0=WW, C=C_ridge, eta=self.eta,
                         rtol=5e-2, atol=1e-4, verbose=False)
         LL += WW - ZZ
-        return sub_m(WW + LL, C[0], C[1], 0., eta=self.eta)
+
+        return sub_m(WW + LL, C_lasso, C_group, 0., eta=self.eta)
 
     def _gauss_siedel(self, problem, W, H, rtol=1e-3, atol=1e-5):
+        C_lasso = self.C_lasso
+        if isinstance(self.C_lasso, float):
+            C_lasso = self.C_lasso, self.C_lasso
+
+        C_group = self.C_group
+        if isinstance(self.C_group, float):
+            C_group = self.C_group, self.C_group
+
+        C_ridge = self.C_ridge
+        if isinstance(self.C_ridge, float):
+            C_ridge = self.C_ridge, self.C_ridge
+
+        if not all(isinstance(C, tuple) and len(C) == 2
+                   for C in [C_lasso, C_group, C_ridge]):
+            raise TypeError("""Regularization coefficient must be either a """
+                            """float or a pair of floats.""")
+
         if self.check_convergence:
             WHt = np.dot(W, H.T)
 
-        C_const = self.C_lasso, self.C_group, self.C_ridge
-        for iteration in tqdm.trange(self.max_gs_iter, disable=not self.verbose):
+        C_const_W = C_lasso[0], C_group[0], C_ridge[0]
+        C_const_H = C_lasso[1], C_group[1], C_ridge[1]
+        for iteration in tqdm.trange(self.max_gs_iter,
+                                     disable=not self.verbose):
             # Gauss-Siedel iteration
-            W = self._step(problem, W, H, C_const)
-            H = self._step(problem.T, H, W, C_const)
+            W = self._step(problem, W, H, C_const_W)
+            H = self._step(problem.T, H, W, C_const_H)
 
             if self.check_convergence:
                 # stopping criterion: proximity to the previous value
@@ -340,14 +363,20 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
         Positive value determining the rank of the coefficient matrix in the
         bilinear form.
 
-    C_lasso : float (default=0.1)
-        Nonnegative regularization coefficient for elementwise sparsity.
+    C_lasso : float, tuple (default=0.1)
+        Nonnegative regularization coefficient for elementwise sparsity. If
+        a pair of floats is passed, then the values correspond to different
+        regularization coefficients for the factors W and H respectively.
 
-    C_group : float (default=0.01)
-        Nonnegative regularization coefficient for row-wise group sparsity.
+    C_group : float, tuple (default=0.01)
+        Nonnegative regularization coefficient for row-wise group sparsity. If
+        a pair of floats is passed, then the values correspond to different
+        regularization coefficients for the factors W and H respectively.
 
-    C_ridge : float (default=1.0)
-        Nonnegative ridge-like regularization coefficient.
+    C_ridge : float, tuple (default=1.0)
+        Nonnegative ridge-like regularization coefficient. If
+        a pair of floats is passed, then the values correspond to different
+        regularization coefficients for the factors W and H respectively.
 
     eta : float (default=1.0)
         The ADMM regularization coefficient. Recommended setting is `1.0`.
@@ -440,7 +469,7 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
         random_state = check_random_state(self.random_state)
         if W is None:
             W = random_state.normal(size=(X.shape[1], self.rank))
-    
+
         if H is None:
             H = random_state.normal(size=(Y.shape[1], self.rank))
 
@@ -464,8 +493,9 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
             The estimated matrix `coef_W_` is used if `W` is not provided.
 
         H : optional array-like, shape (d_2, k)
-            Coefficient matrix of the column side-features to use for prediction.
-            The estimated matrix `coef_H_` is used if `H` is not provided.
+            Coefficient matrix of the column side-features to use for the
+            prediction. The estimated matrix `coef_H_` is used if `H` is
+            not provided.
 
         Returns
         -------
@@ -496,8 +526,9 @@ class SparseGroupIMCClassifier(BaseSparseGroupIMC):
             The estimated matrix `coef_W_` is used if `W` is not provided.
 
         H : optional array-like, shape (d_2, k)
-            Coefficient matrix of the column side-features to use for prediction.
-            The estimated matrix `coef_H_` is used if `H` is not provided.
+            Coefficient matrix of the column side-features to use for the
+            prediction. The estimated matrix `coef_H_` is used if `H` is
+            not provided.
 
         Returns
         -------
@@ -519,14 +550,20 @@ class SparseGroupIMCRegressor(BaseSparseGroupIMC):
         Positive value determining the rank of the coefficient matrix in the
         bilinear form.
 
-    C_lasso : float (default=0.1)
-        Nonnegative regularization coefficient for elementwise sparsity.
+    C_lasso : float, tuple (default=0.1)
+        Nonnegative regularization coefficient for elementwise sparsity. If
+        a pair of floats is passed, then the values correspond to different
+        regularization coefficients for the factors W and H respectively.
 
-    C_group : float (default=0.01)
-        Nonnegative regularization coefficient for row-wise group sparsity.
+    C_group : float, tuple (default=0.01)
+        Nonnegative regularization coefficient for row-wise group sparsity. If
+        a pair of floats is passed, then the values correspond to different
+        regularization coefficients for the factors W and H respectively.
 
-    C_ridge : float (default=1.0)
-        Nonnegative ridge-like regularization coefficient.
+    C_ridge : float, tuple (default=1.0)
+        Nonnegative ridge-like regularization coefficient. If
+        a pair of floats is passed, then the values correspond to different
+        regularization coefficients for the factors W and H respectively.
 
     eta : float (default=1.0)
         The ADMM regularization coefficient. Recommended setting is `1.0`.
@@ -619,7 +656,7 @@ class SparseGroupIMCRegressor(BaseSparseGroupIMC):
         random_state = check_random_state(self.random_state)
         if W is None:
             W = random_state.normal(size=(X.shape[1], self.rank))
-    
+
         if H is None:
             H = random_state.normal(size=(Y.shape[1], self.rank))
 
@@ -643,8 +680,9 @@ class SparseGroupIMCRegressor(BaseSparseGroupIMC):
             The estimated matrix `coef_W_` is used if `W` is not provided.
 
         H : optional array-like, shape (d_2, k)
-            Coefficient matrix of the column side-features to use for prediction.
-            The estimated matrix `coef_H_` is used if `H` is not provided.
+            Coefficient matrix of the column side-features to use for the
+            prediction. The estimated matrix `coef_H_` is used if `H` is
+            not provided.
 
         Returns
         -------
